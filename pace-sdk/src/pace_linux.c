@@ -600,6 +600,7 @@ static pace_status pace_linux_thread_init(pace_session *session, pace_thread *th
   return PACE_OK;
 }
 
+#if defined(PACE_WITH_BPF)
 /**
  * The thread's id in the kernel's pid namespace, resolved lazily.
  *
@@ -616,6 +617,9 @@ static pace_status pace_linux_thread_init(pace_session *session, pace_thread *th
  * The retry only happens while the resolution is still failing, which is
  * a short window at the start of a thread's life, and the value is
  * cached once it succeeds.
+ *
+ * It is inside the eBPF guard because it calls the map's lookup
+ * functions, and a build without the tier does not compile them.
  */
 static uint64_t pace_linux_resolve_kernel_tid(pace_linux_thread *lt, uint64_t tid,
                                                struct pace_bpf *bpf) {
@@ -679,6 +683,7 @@ static uint64_t pace_linux_resolve_kernel_tid(pace_linux_thread *lt, uint64_t ti
    * id, and the resolution is confirmed at the next sample. */
   return tid;
 }
+#endif /* PACE_WITH_BPF */
 
 static pace_status pace_linux_thread_read(pace_session *session, pace_thread *thread,
                                           pace_raw *out_raw) {
@@ -746,6 +751,8 @@ static pace_status pace_linux_thread_read(pace_session *session, pace_thread *th
       preempted_from_bpf = 1;
     }
   }
+#else
+  (void)bpf_kernel_tid;
 #endif
 
   uint64_t wall_now = pace_now_monotonic_ns();
