@@ -14,6 +14,7 @@
 #include "bpf/pace_bpf.h"
 
 #include <dirent.h>
+#include <inttypes.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -99,6 +100,32 @@ int main(void) {
     printf("  the eBPF measurement is %+.2f %% of the kernel's counter\n",
            (bpf_total - kd_total) / kd_total * 100.0);
   }
+
+  /* What the tier actually observed. The state counts say whether a
+   * preempted task reported TASK_RUNNING when it was switched out, and
+   * the wait counts say how many switch-ins had a timestamp to measure
+   * from. Between them they account for the measurement, so a
+   * difference between two machines is attributable rather than
+   * mysterious. */
+  uint64_t switch_ins = 0, with_timestamp = 0;
+  pace_bpf_read_diagnostic(bpf, "wait_counts", 0, &switch_ins);
+  pace_bpf_read_diagnostic(bpf, "wait_counts", 1, &with_timestamp);
+  printf("  the switch-ins the tier saw: %" PRIu64 ", of which %" PRIu64
+         " had a timestamp to measure from\n",
+         switch_ins, with_timestamp);
+
+  printf("  the switch-outs the tier saw, by the task's state:\n");
+  for (uint64_t state = 0; state < 8; state++) {
+    uint64_t count = 0;
+    pace_bpf_read_diagnostic(bpf, "state_counts", state, &count);
+    if (count == 0) continue;
+    const char *name = "another state";
+    if (state == 0) name = "TASK_RUNNING, so it was runnable and preempted";
+    else if (state == 1) name = "TASK_INTERRUPTIBLE, so it was sleeping";
+    else if (state == 2) name = "TASK_UNINTERRUPTIBLE, so it was sleeping";
+    printf("    state %" PRIu64 ": %" PRIu64 " -- %s\n", state, count, name);
+  }
+
   pace_bpf_close(bpf);
   return 0;
 }

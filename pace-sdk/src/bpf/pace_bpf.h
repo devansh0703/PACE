@@ -70,4 +70,23 @@ pace_status pace_bpf_read_thread(struct pace_bpf *bpf, uint64_t tid, uint64_t *w
 pace_status pace_bpf_read_preempted_ns(struct pace_bpf *bpf, uint64_t tid,
                                         uint64_t *preempted_ns);
 
+/**
+ * Read a diagnostic counter from the tier's maps.
+ *
+ * The tier records how many switch-outs it saw with each prev_state, and
+ * how many switch-ins found a "runnable since" timestamp. Those counts
+ * answer the question of what the tier actually observed on a given
+ * kernel, which is the question that has to be answered when the tier's
+ * measurement differs between machines.
+ *
+ * @param map_name "state_counts" or "wait_counts".
+ * @param key      the key to read. For "state_counts" it is the
+ *                 prev_state value; for "wait_counts" it is 0 for the
+ *                 switch-ins and 1 for the switch-ins that had a
+ *                 timestamp.
+ * @param out      the counter.
+ */
+pace_status pace_bpf_read_diagnostic(struct pace_bpf *bpf, const char *map_name,
+                                     uint64_t key, uint64_t *out);
+
 #endif /* PACE_INTERNAL_BPF_H */

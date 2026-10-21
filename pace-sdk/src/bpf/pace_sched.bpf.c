@@ -145,6 +145,31 @@ struct {
   __type(value, __u64);
 } block_count SEC(".maps");
 
+/* A diagnostic: how many switch-outs were seen with each prev_state,
+ * keyed by the state value.
+ *
+ * This is here because the tier's behaviour differs between kernels, and
+ * the difference needs to be measurable rather than guessed at. It
+ * answers one question directly: does a preempted task report
+ * TASK_RUNNING when it is switched out, on this kernel?
+ */
+struct {
+  __uint(type, BPF_MAP_TYPE_HASH);
+  __uint(max_entries, 64);
+  __type(key, __u32);
+  __type(value, __u64);
+} state_counts SEC(".maps");
+
+/* A diagnostic: how many switch-ins there were, and how many of them
+ * found a "runnable since" timestamp. The difference is the number of
+ * switch-ins whose interval was not measured. */
+struct {
+  __uint(type, BPF_MAP_TYPE_HASH);
+  __uint(max_entries, 64);
+  __type(key, __u32);
+  __type(value, __u64);
+} wait_counts SEC(".maps");
+
 /* The thread id of a task, read with a CO-RE read so the program does not
  * depend on the task_struct's layout. */
 static __always_inline __u32 task_tid(const struct task_struct *task) {
@@ -216,6 +241,9 @@ int pace_sched_switch(struct bpf_raw_tracepoint_args *ctx) {
     runnable_since = *out;
   }
 
+  COUNT_ADD(wait_counts, 0); /* the switch-ins */
+  if (runnable_since) COUNT_ADD(wait_counts, 1); /* the ones with a timestamp */
+
   if (runnable_since && now > runnable_since) {
     __u64 wait = now - runnable_since;
     __u64 *total = bpf_map_lookup_elem(&preempted_ns, &next_tid);
@@ -254,6 +282,7 @@ int pace_sched_switch(struct bpf_raw_tracepoint_args *ctx) {
    * CONFIG_PREEMPT it is essentially never true, and using it made
    * almost every thread measure zero preemption.
    */
+  COUNT_ADD(state_counts, prev_state);
   if (prev_state == PACE_TASK_RUNNING) {
     bpf_map_update_elem(&switch_out_time, &prev_tid, &now, BPF_ANY);
     COUNT_ADD(preempt_count, prev_tid);

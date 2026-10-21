@@ -292,6 +292,30 @@ jobs:
             --duration-ms 400 \
             --output "$RUNNER_TEMP/accuracy.json"
 
+      - name: Compare the eBPF tier against the kernel's own counter
+        working-directory: pace-sdk
+        run: |
+          # The two counters for the same quantity, for the same threads,
+          # in the same window: the kernel's /proc/<tid>/schedstat
+          # run_delay, and the eBPF tier's measurement of the scheduler's
+          # own events.
+          #
+          # The kernel's counter is an approximation -- it measures the
+          # time from queueing to dequeuing, so a thread that is queued
+          # and then migrated loses the interval -- and the size of the
+          # difference is machine-dependent. So the runner's numbers are
+          # reported, which is what makes a difference between machines
+          # attributable rather than mysterious.
+          #
+          # The program also reports what the tier observed: how many
+          # switch-outs it saw with each task state, and how many
+          # switch-ins had a timestamp to measure from.
+          if [ -x build/pace_compare_counters ]; then
+            sudo -n taskset -c 0-3 ./build/pace_compare_counters || true
+          else
+            echo "the comparison program was not built; the eBPF tier is off"
+          fi
+
       - name: Check the documents' numbers against the committed artifact
         run: |
           # The same drift, in the documents. A number written by hand in

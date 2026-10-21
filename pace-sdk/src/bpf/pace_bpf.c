@@ -225,3 +225,33 @@ pace_status pace_bpf_read_preempted_ns(struct pace_bpf *bpf, uint64_t tid,
   *preempted_ns = value;
   return PACE_OK;
 }
+
+/**
+ * Read a diagnostic counter from the tier's maps.
+ *
+ * The maps are looked up by name, because the two diagnostic maps have
+ * different shapes and a name is what the caller has.
+ */
+pace_status pace_bpf_read_diagnostic(struct pace_bpf *bpf, const char *map_name,
+                                     uint64_t key, uint64_t *out) {
+  if (!bpf || !bpf->available || !map_name || !out) return PACE_ERR_UNSUPPORTED;
+
+  int fd;
+  if (strcmp(map_name, "state_counts") == 0) {
+    fd = bpf_map__fd(bpf->skel->maps.state_counts);
+  } else if (strcmp(map_name, "wait_counts") == 0) {
+    fd = bpf_map__fd(bpf->skel->maps.wait_counts);
+  } else {
+    return PACE_ERR_INVALID_ARG;
+  }
+  if (fd < 0) return PACE_ERR_UNSUPPORTED;
+
+  __u32 k = (__u32)key;
+  __u64 value = 0;
+  if (bpf_map_lookup_elem(fd, &k, &value) != 0) {
+    *out = 0;
+    return PACE_OK;
+  }
+  *out = value;
+  return PACE_OK;
+}
