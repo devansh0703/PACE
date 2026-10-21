@@ -8,9 +8,14 @@
  */
 #include "pace/pace.h"
 
-/* The internal backend header, for the portable thread id helper. */
+/* The internal backend header, for the session's own state and for the
+ * portable thread id helper. */
 #include "pace_backend.h"
+#include "pace_session.h"
 #include "pace_trace.h"
+#if defined(PACE_WITH_BPF)
+#include "bpf/pace_bpf.h"
+#endif
 
 #include <inttypes.h>
 #include <pthread.h>
@@ -82,6 +87,35 @@ int main(int argc, char **argv) {
   nanosleep(&ts, NULL);
   g_stop = 1;
 
+#if defined(PACE_WITH_BPF)
+  /* The tier's cumulative values are read BEFORE the workers are joined.
+   *
+   * A thread's /proc/<pid>/task/<tid> directory disappears when the
+   * thread exits, so reading after the join finds nothing -- and the
+   * report would say the tier measured nothing while the trace beside
+   * it said otherwise. */
+  {
+    struct pace_bpf *bpf = (struct pace_bpf *)session->bpf;
+    if (bpf && pace_bpf_is_available(bpf)) {
+      uint64_t total = 0;
+      for (int i = 0; i < nthreads; i++) {
+        uint64_t value = 0;
+        /* The map is keyed by the kernel's thread id, which is not the
+         * one gettid() returns when there is more than one pid
+         * namespace. */
+        uint64_t kernel_tid = pace_kernel_thread_id(workers[i].tid);
+        if (kernel_tid == 0) kernel_tid = workers[i].tid;
+        if (pace_bpf_read_preempted_ns(bpf, kernel_tid, &value) == PACE_OK) {
+          total += value;
+        }
+      }
+      fprintf(stderr, "  the tier's cumulative preemption for the workers: %" PRIu64
+                      " ns\n",
+              total);
+    }
+  }
+#endif
+
   for (int i = 0; i < nthreads; i++) pthread_join(threads[i], NULL);
 
   pace_trace_flush(g_trace);
@@ -99,6 +133,7 @@ int main(int argc, char **argv) {
   fprintf(stderr, "the eBPF tier is %s; %" PRIu64 " samples, %" PRIu64 " degraded\n",
           stats.ebpf_available ? "attached" : "not available", stats.samples_taken,
           stats.degraded_samples);
+
 
 
   pace_session_destroy(session);

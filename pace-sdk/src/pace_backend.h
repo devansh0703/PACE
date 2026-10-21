@@ -112,6 +112,19 @@ const pace_backend *pace_backend_current(void);
  */
 uint64_t pace_current_thread_id(void);
 
+/**
+ * A thread's id in the kernel's pid namespace.
+ *
+ * The eBPF tier's maps are keyed by task->pid, which is the kernel's
+ * pid, while pace_current_thread_id() returns the pid in the process's
+ * namespace. They are the same number only when there is one pid
+ * namespace; in a container they differ, and a lookup by the
+ * namespace's id misses the map entirely.
+ *
+ * Returns 0 when it cannot be read.
+ */
+uint64_t pace_kernel_thread_id(uint64_t tid);
+
 /* Shared helpers used by every backend. */
 
 /** Monotonic clock in nanoseconds. */

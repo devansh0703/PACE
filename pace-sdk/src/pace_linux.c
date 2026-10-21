@@ -240,6 +240,25 @@ typedef struct pace_linux_thread {
   uint64_t fd_start_time;
   /** Samples until the next thread-id-recycling check. */
   int start_time_check_countdown;
+  /**
+   * The thread's id in the KERNEL's pid namespace.
+   *
+   * The eBPF tier's maps are keyed by task->pid, which is the kernel's
+   * pid. The thread id the SDK holds is the one gettid() returns, which
+   * is the pid in the process's namespace. Those are the same number
+   * only when there is one pid namespace.
+   *
+   * In a container -- which is what a CI runner is -- they differ, and
+   * a lookup by the namespace's thread id misses the map entirely. The
+   * tier then contributes nothing while reporting itself attached, and
+   * the SDK falls back to the kernel's counter, which on some kernels
+   * undercounts the preemption by 80 %.
+   *
+   * So the kernel's pid is resolved once, at registration, from
+   * /proc/<tid>/status's NSpid line, whose LAST entry is the kernel's
+   * pid (the entries are listed from the outermost namespace inwards).
+   */
+  uint64_t kernel_tid;
 } pace_linux_thread;
 
 /**
@@ -256,6 +275,63 @@ static int pace_open_schedstat(uint64_t tid) {
   snprintf(path, sizeof path, "/proc/%" PRIu64 "/schedstat", tid);
   int fd = open(path, O_RDONLY | O_CLOEXEC);
   return fd;
+}
+
+/**
+ * A thread's id in the kernel's pid namespace, or 0 if it cannot be read.
+ *
+ * The eBPF tier's maps are keyed by task->pid, which is the kernel's
+ * pid, while the thread id the SDK holds is the one gettid() returns:
+ * the pid in the process's namespace. They are the same number only
+ * when there is one pid namespace.
+ *
+ * In a container they differ, and a lookup by the namespace's thread id
+ * misses the map entirely -- so the tier contributes nothing while
+ * reporting itself attached, and the SDK falls back to the kernel's
+ * counter.
+ *
+ * /proc/<tid>/status carries the "NSpid:" line, whose entries are the
+ * pid in each namespace from the outermost inwards. The LAST entry is
+ * the kernel's:
+ *
+ *   NSpid:  1234   42   7
+ *
+ * and with a single namespace there is one entry, which is the kernel's
+ * too. So the last entry is always the right one.
+ *
+ * The file is read once per thread, at registration, and not per
+ * sample.
+ */
+uint64_t pace_kernel_thread_id(uint64_t tid) {
+  /* The path has to be built from the PROCESS's own directory, because
+   * /proc/<tid>/status exists only for a thread group leader. A
+   * non-leader thread's status is at /proc/<tgid>/task/<tid>/status,
+   * and there is no /proc/<tid>/ for it at all.
+   *
+   * So the path is /proc/self/task/<tid>/status, which is right for
+   * every thread of the process, leader or not. */
+  char path[80];
+  snprintf(path, sizeof path, "/proc/self/task/%" PRIu64 "/status", tid);
+
+  FILE *f = fopen(path, "r");
+  if (!f) return 0;
+
+  char line[256];
+  uint64_t kernel_id = 0;
+  while (fgets(line, sizeof line, f)) {
+    if (strncmp(line, "NSpid:", 6) != 0) continue;
+    /* The entries are separated by whitespace, and the last one is the
+     * kernel's. */
+    const char *p = line + 6;
+    while (*p) {
+      while (*p == ' ' || *p == '\t') p++;
+      if (*p < '0' || *p > '9') break;
+      kernel_id = strtoull(p, (char **)&p, 10);
+    }
+    break;
+  }
+  fclose(f);
+  return kernel_id;
 }
 
 /**
@@ -470,6 +546,13 @@ static pace_status pace_linux_thread_init(pace_session *session, pace_thread *th
     return PACE_ERR_UNSUPPORTED;
   }
 
+  /* The eBPF tier's maps are keyed by the kernel's thread id, which is
+   * not the same as the one gettid() returns when there is more than one
+   * pid namespace. It is resolved once here, at registration, and not per
+   * sample. */
+  lt->kernel_tid = pace_kernel_thread_id(thread->thread_id);
+  if (lt->kernel_tid == 0) lt->kernel_tid = thread->thread_id;
+
 #if defined(__linux__)
   if (session->config.prefer_perf_counters) {
     if (session->config.keep_perf_fds_open) {
@@ -566,7 +649,7 @@ static pace_status pace_linux_thread_read(pace_session *session, pace_thread *th
    * a cumulative counter. */
   if (session->bpf_available) {
     uint64_t bpf_preempt = 0, bpf_block = 0, bpf_wakeup = 0;
-    if (pace_bpf_read_thread((struct pace_bpf *)session->bpf, thread->thread_id, &bpf_wakeup,
+    if (pace_bpf_read_thread((struct pace_bpf *)session->bpf, lt->kernel_tid, &bpf_wakeup,
                              &bpf_preempt, &bpf_block) == PACE_OK) {
       if (bpf_preempt > 0) involuntary = bpf_preempt;
       if (bpf_block > 0) voluntary = bpf_block;
@@ -595,7 +678,7 @@ static pace_status pace_linux_thread_read(pace_session *session, pace_thread *th
      * change of source, which re-takes the baseline and degrades the
      * sample. */
     uint64_t bpf_preempted_ns = 0;
-    if (pace_bpf_read_preempted_ns((struct pace_bpf *)session->bpf, thread->thread_id,
+    if (pace_bpf_read_preempted_ns((struct pace_bpf *)session->bpf, lt->kernel_tid,
                                    &bpf_preempted_ns) == PACE_OK) {
       out_raw->run_delay_ns = bpf_preempted_ns;
       out_raw->preempted_from_bpf = 1;

@@ -166,7 +166,12 @@ int main(void) {
     uint64_t tid = (uint64_t)strtoull(entry->d_name, NULL, 10);
     uint64_t kernel = kernel_run_delay(tid);
     uint64_t tier = 0;
-    if (pace_bpf_read_preempted_ns(bpf, tid, &tier) != PACE_OK) continue;
+    /* The map is keyed by the kernel's thread id, which is not the one
+     * the task directory is named after when there is more than one pid
+     * namespace. */
+    uint64_t kernel_tid = pace_kernel_thread_id(tid);
+    if (kernel_tid == 0) kernel_tid = tid;
+    if (pace_bpf_read_preempted_ns(bpf, kernel_tid, &tier) != PACE_OK) continue;
 
     if (compared < 8) {
       printf("  thread %-8s the kernel's run_delay %12" PRIu64
@@ -234,14 +239,17 @@ int main(void) {
         pace_sample first, second;
         /* The first sample establishes the baseline. */
         pace_session_sample(probe, handle, &first);
+        uint64_t probe_tid = pace_current_thread_id();
+        uint64_t probe_kernel_tid = pace_kernel_thread_id(probe_tid);
+        if (probe_kernel_tid == 0) probe_kernel_tid = probe_tid;
         uint64_t before = 0;
-        pace_bpf_read_preempted_ns(probe_bpf, pace_current_thread_id(), &before);
+        pace_bpf_read_preempted_ns(probe_bpf, probe_kernel_tid, &before);
 
         usleep(300 * 1000);
 
         pace_session_sample(probe, handle, &second);
         uint64_t after = 0;
-        pace_bpf_read_preempted_ns(probe_bpf, pace_current_thread_id(), &after);
+        pace_bpf_read_preempted_ns(probe_bpf, probe_kernel_tid, &after);
 
         uint64_t tier_delta = after - before;
         printf("  the SDK's reported preemption over the window: %" PRIu64 " ns\n",
