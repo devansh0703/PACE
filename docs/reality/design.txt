@@ -1,0 +1,17 @@
+REALITY: premise-table pass "The SDK site leads with the problem, not the product, and its hero states the measurement gap before any feature." websites/pace-sdk/src/pages/index.astro:52-53
+REALITY: premise-table pass "The analyzer site leads with the question and shows the real terminal output as the second thing on the page." websites/pace-analyzer/src/pages/index.astro:52-53
+REALITY: premise-table pass "A figure the report did not measure is printed as a dash, never as a zero." pace-analyzer/src/report.rs:83-96
+REALITY: premise-table pass "The HTML table and the HTML summary follow the same rule as the terminal report." pace-analyzer/src/report.rs:309-347
+REALITY: premise-table pass "The split bar for an unmeasured thread is empty, so it cannot be read as a measured all-on-CPU result." pace-analyzer/src/report.rs:split_bar_without_attribution
+REALITY: premise-table pass "The SDK site states that it ships for Linux today, and does not claim Windows or macOS support." websites/pace-sdk/src/pages/index.astro:66
+REALITY: premise-table pass "The SDK site describes three tiers, including the eBPF tier the CEO review added." websites/pace-sdk/src/pages/index.astro:100
+REALITY: premise-table pass "The design contract is checked mechanically, and the check is wired into CI." websites/scripts/check_design_contract.py:88-129
+REALITY: already-done pass "The Wire Terminal visual system was already implemented; the review found the CSS had drifted from it rather than rebuilding the system." websites/pace-sdk/src/styles/wire-terminal.css:13-23
+REALITY: surface-check pass "Every section the nav links to exists on the page: the problem, the measurement, the integration, the evidence and the licence." websites/pace-sdk/src/pages/index.astro:17-23
+REALITY: surface-check pass "The analyzer site's four commands match the analyzer's four commands exactly." websites/pace-analyzer/src/pages/index.astro:134-138
+REALITY: binding-decisions pass "The plan's design direction is implemented as written, and the three rules the review found broken are the three that had drifted; the review found no reintroduced overruled default." PLAN.md:284-297
+REALITY: numbers pass "The SDK site's contended-run figures are the real numbers from the committed trace: 654.75 ms on-CPU." pace-analyzer/results/real-trace-report.txt:1
+REALITY: numbers pass "The same report shows 1.22 s preempted and 131.12 ms blocked for the same thread." pace-analyzer/results/real-trace-report.txt:1
+REALITY: numbers pass "Both sites build with no placeholder content, and the design-contract check reports clean across 4 files." websites/scripts/check_design_contract.py:129
+REALITY: deferred-asks pass "The hosted API reference, the SDK page's glossary and the analyzer page's HTML-report screenshot are the only design items left out; each is recorded with the reason it was left out." docs/DX-REVIEW.md:1
+REALITY: pr-count pass "No .gstack/ship-policy.json exists, so the default of one PR per wave applies; the site corrections and the contract check were committed as one wave because they are one design-contract change." PLAN.md:296-306

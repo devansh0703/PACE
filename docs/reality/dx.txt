@@ -1,0 +1,20 @@
+REALITY: premise-table pass "A consumer can go from a clean checkout to a running program in four commands, and the flow was executed to confirm it." pace-sdk/README.md:57-73
+REALITY: premise-table pass "The analyzer needs one build command and no configuration, no environment variable and no account." pace-analyzer/README.md:33-40
+REALITY: premise-table pass "Every error carries a stable code, an actionable fix and a recovery line that states the output state." pace-analyzer/src/lib.rs:113-206
+REALITY: premise-table pass "The CLI renders the contract on stderr and exits non-zero." pace-analyzer/src/main.rs:119-124
+REALITY: premise-table pass "The SDK's status codes carry the same contract." pace-sdk/include/pace/pace.h:79-88
+REALITY: premise-table pass "The seven error codes are kebab-case, distinct and locked by a test." pace-analyzer/tests/error_contract.rs:72-93
+REALITY: premise-table pass "A missing file reports io-error rather than format-unknown." pace-analyzer/src/main.rs:81-95
+REALITY: premise-table pass "No error message mentions a secret-shaped word, and the test holds it there." pace-analyzer/tests/error_contract.rs:171-189
+REALITY: premise-table pass "Every opinionated default has a documented override." pace-sdk/docs/INTEGRATION.md:20-40
+REALITY: premise-table pass "The SDK's documentation examples compile and run." pace-sdk/docs/INTEGRATION.md:6-20
+REALITY: already-done pass "The build, install and find_package flow was already implemented and was re-run rather than rebuilt; the packaging and the CI consumer check already exercise it." pace-sdk/docs/INTEGRATION.md:6-20
+REALITY: already-done pass "The analyzer's CLI surface was already implemented; the review found the error contract missing rather than the commands missing." pace-analyzer/src/main.rs:27-72
+REALITY: surface-check pass "Every CLI command and flag named in the plan exists: analyze with --format, --output, --json and the two thresholds, inspect, verify, convert with --to." pace-analyzer/src/main.rs:27-72
+REALITY: surface-check pass "Every pace_config default has a corresponding override in the integration guide." pace-sdk/docs/INTEGRATION.md:20-40
+REALITY: binding-decisions pass "The plan's D5 (integrate in-process through a C callback, with the file format as a secondary path) is honoured by the observer API and the trace writer; the review found no reintroduced overruled default." PLAN.md:313
+REALITY: numbers pass "The SDK's hello world printed on_cpu=3372 preempted=0 blocked=1113 on a measured run." pace-sdk/docs/INTEGRATION.md:1-5
+REALITY: numbers pass "The analyzer's 26 tests pass, of which 7 cover the error contract." pace-analyzer/tests/error_contract.rs:1
+REALITY: numbers pass "The SDK's 96 lifecycle checks pass, of which 33 cover the error contract across nine status codes." pace-sdk/tests/unit/test_lifecycle.c:263
+REALITY: deferred-asks pass "The hosted API reference and the summary call are the only DX items left out; the inline header documentation is complete and a hosted reference needs a hosting decision." pace-sdk/include/pace/pace.h:1-327
+REALITY: pr-count pass "No .gstack/ship-policy.json exists, so the default of one PR per wave applies; the error contract was committed as one wave because it is one change to one contract." PLAN.md:296-306

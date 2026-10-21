@@ -1,0 +1,31 @@
+REALITY: premise-table pass "The SDK links into a third-party process without adding threads, allocating on the hot path, or requiring privilege." pace-sdk/src/pace_session.c:288-307
+REALITY: premise-table pass "The hot path is 524 ns at tier 0 and does not allocate." pace-sdk/examples/pace_overhead
+REALITY: premise-table pass "The decomposition invariant holds exactly on every sample." pace-sdk/results/accuracy.json
+REALITY: premise-table pass "A thread handle cannot be used with the wrong session." pace-sdk/src/pace_session.c:336
+REALITY: premise-table pass "The thread-local fast path never dereferences a freed handle." pace-sdk/src/pace_session.c:368
+REALITY: premise-table pass "A recycled thread id does not inherit the dead thread's baselines." pace-sdk/src/pace_session.c:154
+REALITY: premise-table pass "The analyzer refuses to report an empty trace as a pass." pace-analyzer/src/main.rs:152
+REALITY: premise-table pass "The analyzer counts and skips malformed lines instead of failing the parse." pace-analyzer/src/parsers.rs:100
+REALITY: already-done pass "The TID-recycling guard, the session stats, the ABI-safe sample and the honest-attribution flags were already implemented before this review; the review found the remaining gaps rather than redoing the work." pace-sdk/src/pace_linux.c:210
+REALITY: already-done pass "The accuracy harness, the perf comparison and the committed result artifact already existed; the review re-ran them rather than rebuilding them." pace-sdk/results/accuracy.json
+REALITY: surface-check pass "Every CLI command and flag named in the plan exists: analyze --format --output --json --preempted-threshold --blocked-threshold, inspect, verify, convert --to." pace-analyzer/src/main.rs:27-72
+REALITY: surface-check pass "Every CMake option the CI passes exists in the build." pace-sdk/CMakeLists.txt:19-23
+REALITY: surface-check finding "The CI's find_package check and the accuracy harness both referenced paths that do not exist in the workspace layout; both were fixed." .github/workflows/ci.yml:30-70
+REALITY: binding-decisions pass "The plan's D1 (three tiers, none required), D2 (reference cycles portable, core cycles local), D3 (preempted cycles are an estimate) and D9 (portable, embeddable, privilege-free, in-process) are all honoured by the implementation; the review found no reintroduced overruled default." PLAN.md:309-315
+REALITY: numbers pass "The tier-0 sample cost of 524 ns and the tier-1 cost of 1.01 us were measured on this machine." pace-sdk/examples/pace_overhead:1
+REALITY: numbers pass "The on-CPU agreement of 0.0062% against the kernel CFS accounting was measured by the harness." pace-sdk/results/accuracy.json:1
+REALITY: numbers pass "The on-CPU agreement of 0.0541% against perf's run-time column was measured by the harness." pace-sdk/results/accuracy.json:1
+REALITY: numbers pass "The exact decomposition over 108135 samples was measured by the harness." pace-sdk/results/accuracy.json:1
+REALITY: numbers pass "The 35 lifecycle checks and 77 unit checks pass unprivileged and as root." pace-sdk/tests/unit/test_lifecycle.c:1
+REALITY: numbers pass "The 19 analyzer tests pass." pace-analyzer/tests/analysis_test.rs:1
+REALITY: deferred-asks pass "The Windows and macOS backends are the only part of the brief left out of the implementation; the plan states the reason and the tier tables state honestly what those platforms can do without privilege." PLAN.md:291-292
+REALITY: pr-count pass "No .gstack/ship-policy.json exists, so the default of one PR per wave applies; the four fixes were committed as one wave because they are one defect class." PLAN.md:296-306
+REALITY: prior-art pass "The analyzer's CSV and text parsers are hand-written rather than adopting the regex and csv crates, because a regex over untrusted trace files carries catastrophic backtracking; the decision is recorded in the plan's D6 and the CEO decision log." PLAN.md:314
+REALITY: units pass "The preempted-vs-sch-delay threshold of 10% was re-measured after the session-lifecycle fixes and still passes." pace-sdk/tests/verify/verify_accuracy.py:1
+REALITY: units pass "The off-CPU threshold of 5% was re-measured after the session-lifecycle fixes and still passes." pace-sdk/tests/verify/verify_accuracy.py:1
+REALITY: perf-table pass "The measurement environment was captured into the artifact: the CPU model, the kernel, the governor and the turbo state." pace-sdk/results/accuracy.json:1
+REALITY: perf-table pass "The run used 10 repetitions per case." pace-sdk/tests/verify/verify_accuracy.py:495
+REALITY: perf-table pass "Each repetition used a 300 ms measurement window." pace-sdk/tests/verify/verify_accuracy.py:496
+REALITY: perf-table pass "Both the median and the p95 are reported for every check." pace-sdk/tests/verify/verify_accuracy.py:162-163
+REALITY: dependency-fallback pass "The eBPF tier ships without the perf tier: unprivileged operation produces the complete four-way decomposition from the procfs tier alone, and the eBPF tier only adds switch counts." pace-sdk/src/pace_linux.c:359-370
+REALITY: obligation-tiers pass "Must-ship: the session-lifecycle fixes, the CI restructure and the packaging, all done. Next: the Windows and macOS backends. Deferred: the streaming analyzer mode above 10 M samples, with the limit documented." PLAN.md:296-306

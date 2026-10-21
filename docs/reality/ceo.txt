@@ -1,0 +1,7 @@
+REALITY: premise-table finding the strategic differentiation premise is false: Intel VTune already separates Preemption Wait Time from Inactive Sync Wait Time on Linux, so the plan's "no existing tool cleanly separates those two" claim cannot stand docs/COMPETITIVE-AND-PRIOR-ART.md:1
+REALITY: already-done pass 0 hits since 2026-10-21 for pace-sdk 44b35be
+REALITY: surface-check finding perf sched timehist column semantics were misread as "wait time" when the run-queue wait is the "sch delay" column, per perf-sched(1) pace-sdk/tests/verify/verify_accuracy.py:360
+REALITY: binding-decisions pass 6 binding decisions D1-D7 carried into the implementation, no overruled default reintroduced pace-sdk/docs/PREMISE-VERIFICATION.md:1
+REALITY: numbers finding the $660M wider market and $20M wedge are model estimates with no locatable source and must not be published as fact docs/IDEA-BRIEF.md:1
+REALITY: deferred-asks pass no linked issue; the Idealab "Things to watch for" section is account-gated and its risks were re-derived independently docs/IDEA-BRIEF.md:1
+REALITY: pr-count pass no ship-policy.json so one PR per wave is the default pace-sdk/CMakeLists.txt:1
