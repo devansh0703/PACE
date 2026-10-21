@@ -80,6 +80,41 @@ jobs:
         working-directory: pace-sdk
         run: cmake --install build --prefix "${{ github.workspace }}/install"
 
+      - name: Build with the thread sanitizer
+        working-directory: pace-sdk
+        run: |
+          # The library promises that sampling is safe from several threads
+          # at once. A data race there produces a wrong number rather than
+          # a crash, so the promise is checked under a thread sanitizer.
+          cmake -S . -B build-tsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DPACE_SANITIZER=thread -DPACE_ENABLE_BPF=OFF -DPACE_BUILD_BENCH=OFF
+          cmake --build build-tsan -j 4
+
+      - name: Run the tests under the thread sanitizer
+        working-directory: pace-sdk
+        run: |
+          for t in pace_unit_tests pace_lifecycle_tests pace_primitive_tests \
+                   pace_concurrency_tests; do
+            echo "--- $t"
+            ./build-tsan/$t
+          done
+
+      - name: Build with the address sanitizer
+        working-directory: pace-sdk
+        run: |
+          cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DPACE_SANITIZER=address -DPACE_ENABLE_BPF=OFF -DPACE_BUILD_BENCH=OFF
+          cmake --build build-asan -j 4
+
+      - name: Run the tests under the address sanitizer
+        working-directory: pace-sdk
+        run: |
+          for t in pace_unit_tests pace_lifecycle_tests pace_primitive_tests \
+                   pace_concurrency_tests; do
+            echo "--- $t"
+            ./build-asan/$t
+          done
+
       - name: Verify a consumer can find_package() the installed package
         shell: bash
         working-directory: pace-sdk

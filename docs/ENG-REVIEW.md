@@ -126,7 +126,32 @@ zero (uninitialised, fill it) or exactly this build's size.
 
 **Test.** `test_stats_struct_size_is_checked`.
 
-### 5. The CI could not have run — **Medium**
+### 5. A data race in the session counters — **High**
+
+`pace_session_sample` promised to be safe to call concurrently from
+different threads, and the session's counters were incremented with a plain
+`++`. A `++` is a read-modify-write, so two threads sampling at once lose
+an increment. The counter drifts silently: a vendor reporting "we took
+10,000 samples" would report fewer.
+
+The per-thread state is genuinely per-thread, so the counter was the only
+thing wrong — but it was wrong on the path every vendor takes.
+
+**This was not found by reading the code.** It was found by running the
+library under ThreadSanitizer, which the review's own test list never
+asked for. The library had no sanitizer build and no concurrency test at
+all.
+
+**Fix.** The counters are incremented atomically and read atomically, so
+the two agree. `tests/unit/test_concurrency.c` is new: sixteen threads
+sampling one session, sixteen threads registering at once, and short-lived
+threads leaving while a resident thread samples throughout. The build takes
+a `PACE_SANITIZER` option, and CI runs the suites under the thread and
+address sanitizers on every push.
+
+The result: **0 races** and **0 memory errors** across all four suites.
+
+### 6. The CI could not have run — **Medium**
 
 The workflow checked out one repository at the workspace root and then
 ran the analyzer, the SDK and the websites from it. The three products are
@@ -197,6 +222,8 @@ and runs with that as its working directory.
 | 2.6347 % off-CPU vs perf's wait time | the same harness | [measured: pace-sdk/results/accuracy.json] |
 | 108,135 samples, invariant exact | the same harness | [measured: pace-sdk/results/accuracy.json] |
 | 35 lifecycle checks, 0 failures | `tests/unit/test_lifecycle.c` | [measured: this machine] |
+| 0 data races under ThreadSanitizer | `tests/unit/test_concurrency.c` | [measured: this machine] |
+| 0 memory errors under AddressSanitizer | all four suites | [measured: this machine] |
 | 77 unit checks as root, 0 failures | `tests/unit/test_main.c` | [measured: this machine] |
 | 19 analyzer tests | `cargo test --release` | [measured: this machine] |
 
@@ -229,6 +256,8 @@ that the numbers are checked.
 <!-- The gstack eng phase requires each review to carry these rows. -->
 
 REALITY: premise-table pass "The SDK links into a third-party process without adding threads, allocating on the hot path, or requiring privilege." pace-sdk/src/pace_session.c:288-307
+REALITY: premise-table pass "Sampling is safe to call concurrently from different threads, and the promise is checked under the thread sanitizer rather than asserted." pace-sdk/tests/unit/test_concurrency.c:1
+REALITY: premise-table pass "The session counters are incremented atomically, because a plain increment from two threads loses one." pace-sdk/src/pace_session.c:396
 REALITY: premise-table pass "The hot path is 524 ns at tier 0 and does not allocate." pace-sdk/examples/pace_overhead
 REALITY: premise-table pass "The decomposition invariant holds exactly on every sample." pace-sdk/results/accuracy.json
 REALITY: premise-table pass "A thread handle cannot be used with the wrong session." pace-sdk/src/pace_session.c:336

@@ -1,4 +1,6 @@
 REALITY: premise-table pass "The SDK links into a third-party process without adding threads, allocating on the hot path, or requiring privilege." pace-sdk/src/pace_session.c:288-307
+REALITY: premise-table pass "Sampling is safe to call concurrently from different threads, and the promise is checked under the thread sanitizer rather than asserted." pace-sdk/tests/unit/test_concurrency.c:1
+REALITY: premise-table pass "The session counters are incremented atomically, because a plain increment from two threads loses one." pace-sdk/src/pace_session.c:396
 REALITY: premise-table pass "The hot path is 524 ns at tier 0 and does not allocate." pace-sdk/examples/pace_overhead
 REALITY: premise-table pass "The decomposition invariant holds exactly on every sample." pace-sdk/results/accuracy.json
 REALITY: premise-table pass "A thread handle cannot be used with the wrong session." pace-sdk/src/pace_session.c:336
