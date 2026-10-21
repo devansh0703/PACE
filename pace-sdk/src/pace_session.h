@@ -47,6 +47,18 @@ struct pace_thread {
   uint64_t base_ref_cycles;
   int have_baseline;
 
+  /**
+   * Which counter the baseline was taken from: the kernel's run-queue
+   * delay, or the eBPF tier's measurement.
+   *
+   * The two are different counters with different bases, so a baseline
+   * from one cannot be subtracted from a sample of the other. When the
+   * source changes the baseline is re-taken, and the sample that
+   * observes the change is reported as degraded rather than as a
+   * measurement.
+   */
+  int base_preempted_from_bpf;
+
   /* Backend-owned state. */
   void *backend_data;
 };

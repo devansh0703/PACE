@@ -571,6 +571,35 @@ static pace_status pace_linux_thread_read(pace_session *session, pace_thread *th
       if (bpf_preempt > 0) involuntary = bpf_preempt;
       if (bpf_block > 0) voluntary = bpf_block;
     }
+
+    /* The eBPF tier also measures the preemption WAIT, from the interval
+     * between the thread's sched_wakeup and the sched_switch that ran it.
+     *
+     * The kernel's run_delay counter measures the same phenomenon, but as
+     * the time from queueing to dequeuing, so a thread that is woken,
+     * queued, and then migrated or requeued loses the interval. On some
+     * kernels the undercount is large: measured on a CI runner, the
+     * kernel's counter reported 0.30 s where the scheduler's own events
+     * showed 1.81 s, an 80 % undercount, while the on-CPU time and the
+     * total off-CPU time both agreed with perf.
+     *
+     * So when the tier is attached its measurement is used in preference
+     * to the counter. The counter is kept as the fallback for the threads
+     * the program has not seen yet.
+     *
+     * The flag says which counter the value came from, so it is set
+     * whenever the tier supplied the value -- NOT only when the value
+     * happens to be non-zero. A flag that tracked the value rather than
+     * the source would flicker between zero and non-zero as a thread
+     * was and was not preempted, and every flicker would be read as a
+     * change of source, which re-takes the baseline and degrades the
+     * sample. */
+    uint64_t bpf_preempted_ns = 0;
+    if (pace_bpf_read_preempted_ns((struct pace_bpf *)session->bpf, thread->thread_id,
+                                   &bpf_preempted_ns) == PACE_OK) {
+      out_raw->run_delay_ns = bpf_preempted_ns;
+      out_raw->preempted_from_bpf = 1;
+    }
   }
 #endif
 

@@ -53,6 +53,22 @@ typedef struct pace_raw {
    * as "not running" rather than as a split.
    */
   int has_split;
+  /**
+   * Non-zero when the preemption time came from the eBPF tier rather than
+   * from the kernel's run-queue delay counter.
+   *
+   * The kernel's counter is an approximation: it measures the time from
+   * queueing to dequeuing, and a thread that is woken, queued, and then
+   * migrated or requeued loses the interval. On some kernels the
+   * undercount is large -- measured on a CI runner, the kernel's counter
+   * reported 0.30 s where the scheduler's own events showed 1.81 s.
+   *
+   * The eBPF tier measures the interval between the moment a thread
+   * became runnable and the moment it actually ran, from the
+   * sched_wakeup and sched_switch events themselves. When it is attached
+   * its measurement is used in preference to the counter.
+   */
+  int preempted_from_bpf;
 } pace_raw;
 
 /**

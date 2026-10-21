@@ -311,8 +311,35 @@ static pace_status pace_fill_sample(pace_session *session, pace_thread *thread,
     thread->base_voluntary = raw->voluntary_switches;
     thread->base_core_cycles = raw->core_cycles;
     thread->base_ref_cycles = raw->ref_cycles;
+    thread->base_preempted_from_bpf = raw->preempted_from_bpf;
     thread->have_baseline = 1;
 
+    out_sample->source = session->source;
+    out_sample->flags |= PACE_SAMPLE_F_DEGRADED;
+    __atomic_fetch_add(&session->samples_taken, 1, __ATOMIC_RELAXED);
+    __atomic_fetch_add(&session->degraded_samples, 1, __ATOMIC_RELAXED);
+    return PACE_OK;
+  }
+
+  /* The preemption time can come from two different counters: the
+   * kernel's run-queue delay, or the eBPF tier's measurement of the
+   * scheduler's own events. They are different counters with different
+   * bases, so a baseline taken from one cannot be subtracted from a
+   * sample of the other.
+   *
+   * The source changes when the eBPF tier is attached mid-session, or
+   * when a thread the program has not seen yet is first sampled. When it
+   * changes the baseline is re-taken and the sample is reported as
+   * degraded, because it spans the change and is therefore not a
+   * measurement of either window. */
+  if (raw->preempted_from_bpf != thread->base_preempted_from_bpf) {
+    thread->base_run_delay_ns = raw->run_delay_ns;
+    thread->base_preempted_from_bpf = raw->preempted_from_bpf;
+    thread->base_wall_ns = raw->wall_ns;
+    thread->base_on_cpu_ns = raw->on_cpu_ns;
+
+    memset(out_sample, 0, sizeof *out_sample);
+    out_sample->struct_size = (uint32_t)sizeof *out_sample;
     out_sample->source = session->source;
     out_sample->flags |= PACE_SAMPLE_F_DEGRADED;
     __atomic_fetch_add(&session->samples_taken, 1, __ATOMIC_RELAXED);
@@ -406,6 +433,7 @@ static pace_status pace_fill_sample(pace_session *session, pace_thread *thread,
   thread->base_voluntary = raw->voluntary_switches;
   thread->base_core_cycles = raw->core_cycles;
   thread->base_ref_cycles = raw->ref_cycles;
+  thread->base_preempted_from_bpf = raw->preempted_from_bpf;
 
   /* The session's counters are shared by every thread sampling it, so
    * they are incremented atomically. A plain ++ is a read-modify-write,

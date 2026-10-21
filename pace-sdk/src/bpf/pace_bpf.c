@@ -81,19 +81,66 @@ struct pace_bpf *pace_bpf_open(void) {
     return bpf;
   }
 
-  /* The skeleton's attach handles the raw_tracepoint/ form: it opens
-   * each program with BPF_RAW_TRACEPOINT_OPEN, which resolves the
-   * tracepoint through the kernel's BTF.
+  /* Each program is attached EXPLICITLY, and each result is checked.
    *
-   * The explicit alternative, bpf_program__attach_raw_tracepoint, looks
-   * the name up through tracefs instead, and that lookup fails on hosts
-   * where the tracefs mount is not where libbpf expects it. */
-  err = pace_sched_bpf__attach(skel);
-  if (err) {
-    bpf->reason = PACE_BPF_NO_PERMISSION;
-    pace_sched_bpf__destroy(skel);
-    return bpf;
+   * libbpf's generated skeleton attach helper, pace_sched_bpf__attach(),
+   * attempts every program and DISCARDS the individual errors: it only
+   * returns the error from the attach as a whole. So when one program's
+   * attach fails the helper still returns zero.
+   *
+   * That matters here, because a failure is silent in the worst way: the
+   * tier reported itself attached, the maps stayed empty, and no BPF
+   * program was listed by bpftool. The measurement was the kernel's
+   * counter the whole time, with the eBPF tier contributing nothing and
+   * saying nothing.
+   *
+   * So the programs are attached one at a time here, each result checked,
+   * and a program that fails to attach is reported as a failure of the
+   * tier rather than as a success.
+   *
+   * bpf_program__attach() is what the generated helper calls for the
+   * raw_tracepoint/ form, and it opens the program with
+   * BPF_RAW_TRACEPOINT_OPEN, which resolves the tracepoint through the
+   * kernel's BTF. The explicit alternative,
+   * bpf_program__attach_raw_tracepoint, looks the name up through
+   * tracefs instead, and that lookup fails on hosts where the tracefs
+   * mount is not where libbpf expects it. */
+  struct bpf_link *links[3] = {NULL, NULL, NULL};
+  struct bpf_program *programs[3] = {
+      skel->progs.pace_sched_wakeup,
+      skel->progs.pace_sched_switch,
+      skel->progs.pace_sched_exit,
+  };
+
+  for (int i = 0; i < 3; i++) {
+    if (!programs[i]) continue;
+    links[i] = bpf_program__attach(programs[i]);
+    /* libbpf reports a failure as an ERROR POINTER -- a small negative
+     * value -- not as NULL. So the check has to be libbpf_get_error(),
+     * and a plain "if (!link)" test passes on a failure, which is how a
+     * silently broken tier came to report itself attached. */
+    if (libbpf_get_error(links[i])) {
+      /* One program failing means the tier's measurement would be
+       * partial, and a partial measurement presented as a whole one is
+       * worse than no measurement. So the whole tier is reported
+       * unavailable. */
+      for (int j = 0; j < 3; j++) {
+        if (links[j] && !libbpf_get_error(links[j])) {
+          bpf_link__destroy(links[j]);
+        }
+        links[j] = NULL;
+      }
+      bpf->reason = PACE_BPF_NO_PERMISSION;
+      pace_sched_bpf__destroy(skel);
+      return bpf;
+    }
   }
+
+  /* The links are owned by the skeleton from here on, so it closes them
+   * when it is destroyed. */
+  skel->links.pace_sched_wakeup = links[0];
+  skel->links.pace_sched_switch = links[1];
+  skel->links.pace_sched_exit = links[2];
 
   bpf->skel = skel;
   bpf->available = 1;
@@ -151,5 +198,30 @@ pace_status pace_bpf_read_thread(struct pace_bpf *bpf, uint64_t tid, uint64_t *w
     }
   }
 
+  return PACE_OK;
+}
+
+/**
+ * Read the cumulative preemption wait for one thread.
+ *
+ * The map holds a nanosecond total, accumulated by the program from the
+ * interval between a thread's sched_wakeup and the sched_switch that
+ * actually ran it.
+ */
+pace_status pace_bpf_read_preempted_ns(struct pace_bpf *bpf, uint64_t tid,
+                                        uint64_t *preempted_ns) {
+  if (!bpf || !bpf->available || !preempted_ns) return PACE_ERR_UNSUPPORTED;
+
+  __u32 key = (__u32)tid;
+  __u64 value = 0;
+
+  if (bpf_map_lookup_elem(bpf_map__fd(bpf->skel->maps.preempted_ns), &key, &value) != 0) {
+    /* The thread has not been scheduled since the program loaded, so it
+     * has not been preempted either. That is a real zero. */
+    *preempted_ns = 0;
+    return PACE_OK;
+  }
+
+  *preempted_ns = value;
   return PACE_OK;
 }

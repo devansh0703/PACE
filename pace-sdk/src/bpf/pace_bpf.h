@@ -48,4 +48,26 @@ const char *pace_bpf_unavailable_reason(int reason);
 pace_status pace_bpf_read_thread(struct pace_bpf *bpf, uint64_t tid, uint64_t *wakeup_ns,
                                   uint64_t *preempt_count, uint64_t *block_count);
 
+/**
+ * Read the cumulative time a thread spent runnable but not running.
+ *
+ * This is the preemption wait, measured from the scheduler's own
+ * sched_wakeup and sched_switch events: the interval between the moment
+ * the thread became runnable and the moment it actually ran.
+ *
+ * The kernel's /proc/<tid>/schedstat run_delay counter measures the same
+ * phenomenon, but as the time from queueing to dequeuing, so a thread
+ * that is woken, queued, and then migrated or requeued loses the
+ * interval. Measured on a CI runner, the kernel's counter undercounted by
+ * 80 %.
+ *
+ * The counter is cumulative, exactly like run_delay, so the user space
+ * takes the same difference between its baseline and the sample.
+ *
+ * Returns PACE_OK with *preempted_ns set to 0 when the thread has no
+ * entry yet, and PACE_ERR_NOT_FOUND when the tier is unavailable.
+ */
+pace_status pace_bpf_read_preempted_ns(struct pace_bpf *bpf, uint64_t tid,
+                                        uint64_t *preempted_ns);
+
 #endif /* PACE_INTERNAL_BPF_H */

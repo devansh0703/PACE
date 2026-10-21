@@ -217,6 +217,16 @@ if(PACE_BUILD_TESTS)
   target_link_libraries(pace_verify_ebpf PRIVATE pace)
   target_include_directories(pace_verify_ebpf PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+  # The comparison of the kernel's run-queue delay counter against the
+  # eBPF tier's measurement of the same quantity. It needs the eBPF tier,
+  # so it is only built when the tier is available, and it needs
+  # privilege, so it is not part of ctest.
+  if(PACE_HAVE_BPF)
+    add_executable(pace_compare_counters tests/verify/compare_counters.c)
+    target_link_libraries(pace_compare_counters PRIVATE pace)
+    target_include_directories(pace_compare_counters PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  endif()
+
   add_executable(pace_lifecycle_tests tests/unit/test_lifecycle.c)
   target_link_libraries(pace_lifecycle_tests PRIVATE pace)
   # The lifecycle test inspects the internal thread table, so it needs the
