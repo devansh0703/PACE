@@ -253,6 +253,25 @@ int pace_sched_switch(struct bpf_raw_tracepoint_args *ctx) {
       bpf_map_update_elem(&preempted_ns, &next_tid, &wait, BPF_ANY);
     }
     COUNT_ADD(preempt_count, next_tid);
+  } else {
+    /* The entry is created at EVERY switch-in, not only at the ones
+     * that add a wait.
+     *
+     * The map's presence for a thread is what confirms the thread's
+     * kernel id, so an entry that appeared only at the second switch-in
+     * delayed the confirmation by a whole scheduling round. Until the
+     * confirmation, the SDK measured the preemption with the kernel's
+     * run-queue delay counter, which undercounts it by up to 80 % on
+     * some kernels, and the window before the confirmation was lost.
+     *
+     * The first switch-in creates the entry with a value of zero, which
+     * is a real measurement: the thread had just started running and
+     * was not waiting to run. */
+    __u64 *total = bpf_map_lookup_elem(&preempted_ns, &next_tid);
+    if (!total) {
+      __u64 zero = 0;
+      bpf_map_update_elem(&preempted_ns, &next_tid, &zero, BPF_ANY);
+    }
   }
 
   bpf_map_delete_elem(&wakeup_time, &next_tid);
