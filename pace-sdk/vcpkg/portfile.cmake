@@ -13,7 +13,7 @@ endif()
 # .gitattributes but is not byte-reproducible, so a hash of it would break
 # as soon as the port is corrected.
 set(PACE_SOURCE_URL
-  "https://github.com/devansh0703/pace-sdk/releases/download/v${VERSION}/pace-sdk-${VERSION}.tar.gz")
+  "https://github.com/devansh0703/PACE/releases/download/v${VERSION}/pace-sdk-${VERSION}.tar.gz")
 
 # The SHA512 of that asset.
 set(PACE_SHA512 b613c87eceaf6c4228f22448d8c5cac5dbd0b33b1d98b04583abb27848958791a0b594368f382cdc9b1293fe16bebbcbfb22ee43f2d19fc49564bd3043b2303f)
@@ -23,9 +23,8 @@ vcpkg_download_distfile(ARCHIVE
   FILENAME "pace-sdk-${VERSION}.tar.gz"
   SHA512 ${PACE_SHA512})
 
-vcpkg_extract_sourceforge(SOURCE_PATH
+vcpkg_extract_source_archive(SOURCE_PATH
   ARCHIVE "${CURRENT_BUILDTREES_DIR}/src/pace-sdk-${VERSION}.tar.gz"
-  PATCHES
 )
 
 # The release asset is built with:

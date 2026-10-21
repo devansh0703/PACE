@@ -20,8 +20,12 @@ if [ -z "$VERSION" ]; then
   exit 2
 fi
 
+# The script lives in pace-sdk/scripts, and the project it packages is
+# the pace-sdk directory, which is a subdirectory of the single
+# repository.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
+REPO_ROOT="$(cd "$ROOT/.." && pwd)"
+cd "$REPO_ROOT"
 
 TAG="v${VERSION}"
 if ! git rev-parse -q --verify "$TAG" >/dev/null; then
@@ -51,7 +55,10 @@ BUILD_DIR="$(mktemp -d "${TMPDIR:-/tmp}/pace-release-XXXXXX")"
 trap 'rm -rf "$BUILD_DIR"' EXIT
 
 git archive --format=tar --prefix="pace-sdk-${VERSION}/" "$TAG" \
-  ':!vcpkg' ':!vcpkg.json' ':!dist' ':!scripts' | tar -x -C "$BUILD_DIR"
+  'pace-sdk' \
+  ':!pace-sdk/vcpkg' ':!pace-sdk/vcpkg.json' \
+  ':!pace-sdk/dist' ':!pace-sdk/scripts' \
+  | tar -x -C "$BUILD_DIR"
 
 # A fixed timestamp for every file, and a sorted list, so the archive is
 # byte-identical for identical content.

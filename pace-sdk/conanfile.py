@@ -11,8 +11,8 @@ class PaceConan(ConanFile):
     name = "pace"
     version = "0.1.0"
     license = "BUSL-1.1"
-    url = "https://github.com/devansh0703/pace-sdk"
-    homepage = "https://github.com/devansh0703/pace-sdk"
+    url = "https://github.com/devansh0703/PACE"
+    homepage = "https://github.com/devansh0703/PACE"
     description = (
         "Preemption-Aware Time Attribution Engine: per-thread on-CPU, preempted "
         "and blocked time for developer-tool vendors."

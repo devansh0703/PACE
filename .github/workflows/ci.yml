@@ -26,9 +26,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          repository: devansh0703/pace-sdk
-          path: pace-sdk
 
       - name: Install the Linux build dependencies
         if: runner.os == 'Linux'
@@ -157,9 +154,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          repository: devansh0703/pace-analyzer
-          path: pace-analyzer
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -190,12 +184,7 @@ jobs:
     needs: sdk
 
     steps:
-      # pace-sdk is its own git repository, so it is checked out into a
-      # subdirectory rather than at the workspace root.
       - uses: actions/checkout@v4
-        with:
-          repository: devansh0703/pace-sdk
-          path: pace-sdk
 
       - name: Install the dependencies
         run: |
@@ -220,12 +209,6 @@ jobs:
             --duration-ms 400 \
             --output results/accuracy.json
 
-      - name: Check out the workspace repository for the documents
-        uses: actions/checkout@v4
-        with:
-          repository: devansh0703/kernel_suite
-          path: workspace
-
       - name: Check the documents' numbers against the artifact
         run: |
           # The same drift, in the documents. A number written by hand in
@@ -234,9 +217,7 @@ jobs:
           #
           # The checker reads pace-sdk/results/accuracy.json, which the
           # job above has just regenerated.
-          PACE_ARTIFACT="$GITHUB_WORKSPACE/pace-sdk/results/accuracy.json" \
-          PACE_DOC_ROOT="$GITHUB_WORKSPACE/workspace" \
-          python3 workspace/scripts/check_doc_numbers.py
+          python3 scripts/check_doc_numbers.py
 
       - name: Publish the result artifact
         if: always()
@@ -252,9 +233,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          repository: devansh0703/websites
-          path: websites
 
       - uses: actions/setup-node@v4
         with:

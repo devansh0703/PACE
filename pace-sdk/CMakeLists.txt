@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 3.24)
 project(pace
   VERSION 0.1.0
   DESCRIPTION "Preemption-Aware Cycle Attribution Engine"
-  LANGUAGES C)
+  # The library itself is C11. C++ is enabled for the Google Benchmark
+  # harnesses and the C++ example, which live in this tree.
+  LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
