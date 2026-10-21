@@ -60,6 +60,14 @@ static uint64_t g_trace_wall[PACE_TRACKED_THREADS];
 static uint64_t g_trace_on_cpu[PACE_TRACKED_THREADS];
 static uint64_t g_trace_tids[PACE_TRACKED_THREADS];
 
+/* The tier's counter for a thread at its first sample and at its last,
+ * so the loss can be localised: a large first value means the loss is
+ * before the first sample, and a small difference between the two
+ * means it is in the differencing. */
+static uint64_t g_first_counter[PACE_TRACKED_THREADS];
+static uint64_t g_last_counter[PACE_TRACKED_THREADS];
+static int g_counter_seen[PACE_TRACKED_THREADS];
+
 /* The tier's cumulative, captured before the workers are joined because
  * a thread's map entry disappears when it exits. */
 static uint64_t g_tier_total = 0;
@@ -101,6 +109,22 @@ static void *worker_main(void *arg) {
     g_trace_preempted[slot] += sample.preempted_ns;
     g_trace_wall[slot] += sample.wall_ns;
     g_trace_on_cpu[slot] += sample.on_cpu_ns;
+
+#if defined(PACE_WITH_BPF)
+    {
+      struct pace_bpf *bpf = (struct pace_bpf *)w->session->bpf;
+      uint64_t kernel_tid = pace_linux_thread_kernel_tid(w->handle);
+      uint64_t value = 0;
+      if (bpf && pace_bpf_is_available(bpf) && kernel_tid != 0 &&
+          pace_bpf_read_preempted_ns(bpf, kernel_tid, &value) == PACE_OK) {
+        if (!g_counter_seen[slot]) {
+          g_counter_seen[slot] = 1;
+          g_first_counter[slot] = value;
+        }
+        g_last_counter[slot] = value;
+      }
+    }
+#endif
   }
   return NULL;
 }
@@ -211,6 +235,24 @@ int main(int argc, char **argv) {
               "  the trace's preempted total: %" PRIu64 " ns against the tier's %" PRIu64
               " ns\n",
               trace_total, g_tier_total);
+
+      /* The per-thread loss, localised.
+       *
+       * The counter's value at the thread's first sample, at its last
+       * sample, and the sum of the trace's differences. The three
+       * numbers say where the loss is: a large first value means the
+       * preemption before the first sample is missing, and a small
+       * difference between the first and the last means the
+       * differencing is missing it. */
+      for (int i = 0; i < PACE_TRACKED_THREADS; i++) {
+        if (!g_counter_seen[i]) continue;
+        fprintf(stderr,
+                "    worker %d: the counter at the first sample %" PRIu64
+                " ns, at the last %" PRIu64 " ns, the trace's differences %" PRIu64
+                " ns\n",
+                i, g_first_counter[i], g_last_counter[i], g_trace_preempted[i]);
+        if (i >= 3) break;
+      }
 
       /* The on-CPU time against the wall time.
        *
