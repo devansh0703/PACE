@@ -69,6 +69,25 @@ static inline uint64_t pace_rdtsc(void) {
   return ((uint64_t)hi << 32) | lo;
 }
 
+/**
+ * The TSC's frequency, from CPUID.
+ *
+ * Leaf 0x15 gives the crystal ratio, which is exact: crystal_hz * ebx / eax.
+ * That is the only CPUID-derived value that is the TSC's frequency rather
+ * than something adjacent to it.
+ *
+ * Leaf 0x16's EAX is the *base* frequency in MHz, which is NOT the TSC's
+ * frequency. On a CPU that turbos, the TSC runs at the invariant TSC
+ * frequency, which is above the base frequency, and the two differ by
+ * however much the core is turboing. On a virtual machine the same thing
+ * happens: the hypervisor advertises a base frequency and the TSC runs at
+ * a different rate. Measured on a CI runner, the base frequency was
+ * 28.7 % below the TSC's actual rate.
+ *
+ * So leaf 0x16 is not used for the TSC frequency at all. The calibration
+ * below is used instead, and it is the honest number: it measures the TSC
+ * against the same wall clock the samples are measured against.
+ */
 static double pace_tsc_hz_from_cpuid(void) {
   unsigned max_leaf = __get_cpuid_max(0, NULL);
   if (max_leaf >= 0x15) {
@@ -76,11 +95,6 @@ static double pace_tsc_hz_from_cpuid(void) {
     __cpuid(0x15, eax, ebx, ecx, edx);
     /* crystal_hz * ebx / eax */
     if (eax && ebx && ecx) return (double)ecx * (double)ebx / (double)eax;
-  }
-  if (max_leaf >= 0x16) {
-    unsigned eax, ebx, ecx, edx;
-    __cpuid(0x16, eax, ebx, ecx, edx);
-    if (eax) return (double)eax * 1000000.0; /* base frequency in MHz */
   }
   return 0.0;
 }
@@ -97,14 +111,29 @@ static double pace_tsc_hz_by_calibration(void) {
 
   clock_gettime(CLOCK_MONOTONIC, &t0);
   c0 = pace_rdtsc();
-  do {
+  for (;;) {
     clock_gettime(CLOCK_MONOTONIC, &t1);
-  } while ((uint64_t)(t1.tv_sec - t0.tv_sec) * 1000000000ull +
-              (uint64_t)t1.tv_nsec < window_ns);
+    uint64_t elapsed = (uint64_t)(t1.tv_sec - t0.tv_sec) * 1000000000ull;
+    /* The nanosecond fields are nanoseconds within the second, so the
+     * difference can be negative when the window crosses a second
+     * boundary. The borrow is handled here rather than by an unsigned
+     * subtraction that would wrap. */
+    long nsec_diff = t1.tv_nsec - t0.tv_nsec;
+    if (nsec_diff < 0) {
+      elapsed -= 1000000000ull;
+      nsec_diff += 1000000000L;
+    }
+    if (elapsed + (uint64_t)nsec_diff >= window_ns) break;
+  }
   c1 = pace_rdtsc();
 
-  uint64_t ns = (uint64_t)(t1.tv_sec - t0.tv_sec) * 1000000000ull +
-                (uint64_t)(t1.tv_nsec - t0.tv_nsec);
+  uint64_t ns = (uint64_t)(t1.tv_sec - t0.tv_sec) * 1000000000ull;
+  long nsec_diff = t1.tv_nsec - t0.tv_nsec;
+  if (nsec_diff < 0) {
+    ns -= 1000000000ull;
+    nsec_diff += 1000000000L;
+  }
+  ns += (uint64_t)nsec_diff;
   if (ns == 0) return 0.0;
   return (double)(c1 - c0) * 1e9 / (double)ns;
 }
@@ -112,8 +141,29 @@ static double pace_tsc_hz_by_calibration(void) {
 static double pace_reference_hz_impl(void) {
   static double cached = -1.0;
   if (cached >= 0.0) return cached;
-  double hz = pace_tsc_hz_from_cpuid();
-  if (hz <= 0.0) hz = pace_tsc_hz_by_calibration();
+
+  /* The calibration is the primary source, not the fallback. It measures
+   * the TSC against CLOCK_MONOTONIC, which is the clock every sample is
+   * measured against, so the two agree by construction. The CPUID crystal
+   * ratio is used when the calibration is not possible, and the two are
+   * cross-checked against each other either way.
+   *
+   * The calibration is taken at session creation and never on the hot
+   * path, so its 20 ms cost is paid once. */
+  double hz = pace_tsc_hz_by_calibration();
+
+  /* A calibration that disagrees with the crystal ratio by more than a few
+   * percent means something is wrong -- most likely that the machine was
+   * under heavy load while the calibration ran, or that the TSC is not
+   * invariant. The crystal ratio is exact, so it wins. */
+  double crystal = pace_tsc_hz_from_cpuid();
+  if (crystal > 0.0 && hz > 0.0) {
+    double ratio = hz / crystal;
+    if (ratio < 0.9 || ratio > 1.1) hz = crystal;
+  } else if (hz <= 0.0) {
+    hz = crystal;
+  }
+
   cached = hz;
   return cached;
 }

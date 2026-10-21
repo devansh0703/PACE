@@ -8,10 +8,14 @@ on:
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
-# The deployment needs write access to publish the gh-pages branch, so
-# the workflow must not be silently skipped on a pull request from a fork.
+# The deployment needs two permissions: contents: write to publish the
+# gh-pages branch, and id-token: write so the deployment can request the
+# OIDC token that GitHub Pages verifies. Without the second one the
+# deploy step fails with "Unable to get ACTIONS_ID_TOKEN_REQUEST_URL".
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 concurrency:
   group: pages
