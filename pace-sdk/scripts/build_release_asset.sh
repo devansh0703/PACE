@@ -54,7 +54,7 @@ ASSET="$DIST/pace-sdk-${VERSION}.tar.gz"
 BUILD_DIR="$(mktemp -d "${TMPDIR:-/tmp}/pace-release-XXXXXX")"
 trap 'rm -rf "$BUILD_DIR"' EXIT
 
-git archive --format=tar --prefix="pace-sdk-${VERSION}/" "$TAG" \
+git archive --format=tar "$TAG" \
   'pace-sdk' \
   ':!pace-sdk/vcpkg' ':!pace-sdk/vcpkg.json' \
   ':!pace-sdk/dist' ':!pace-sdk/scripts' \
@@ -63,8 +63,12 @@ git archive --format=tar --prefix="pace-sdk-${VERSION}/" "$TAG" \
 # A fixed timestamp for every file, and a sorted list, so the archive is
 # byte-identical for identical content.
 find "$BUILD_DIR" -exec touch -h -d "@0" {} +
+# The prefix is added here, and the project's own "pace-sdk/" directory
+# is stripped, so the asset's layout is "pace-sdk-<version>/<paths>"
+# with the paths as they are inside the project.
 ( cd "$BUILD_DIR" && find . -type f -o -type l | LC_ALL=C sort \
     | tar --format=gnu --owner=0 --group=0 --numeric-owner --mtime="@0" \
+        --transform "s|^\./pace-sdk/|pace-sdk-${VERSION}/|" \
         --transform "s|^\./|pace-sdk-${VERSION}/|" -T - -cf - ) \
   | gzip -n > "$ASSET"
 

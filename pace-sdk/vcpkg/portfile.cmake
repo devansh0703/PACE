@@ -16,16 +16,29 @@ set(PACE_SOURCE_URL
   "https://github.com/devansh0703/PACE/releases/download/v${VERSION}/pace-sdk-${VERSION}.tar.gz")
 
 # The SHA512 of that asset.
-set(PACE_SHA512 31395e7d2c7e408301d40b340a209346618f9d013996dbfa97af4b00600444f39f2215bb86d64dfd552364e09c7fffd5bc39987be27a8d968f575714493ed5f0)
+set(PACE_SHA512 9952a131dbc57e56fd84de0877953a99456df953c03ea8255da228e64926ceec234846041e381f7448641e0659ee82c77a674cdb7fea3f5e95a1df9958a25693)
 
 vcpkg_download_distfile(ARCHIVE
   URLS "${PACE_SOURCE_URL}"
   FILENAME "pace-sdk-${VERSION}.tar.gz"
   SHA512 ${PACE_SHA512})
 
-vcpkg_extract_source_archive(SOURCE_PATH
-  ARCHIVE "${CURRENT_BUILDTREES_DIR}/src/pace-sdk-${VERSION}.tar.gz"
+# vcpkg stores a downloaded file under a mangled name when the filename
+# is long: "pace-sdk-0.1.0.tar.gz" became
+# "pace-sdk-0-31395e7d.1.0.tar.gz", with the hash inserted and the name
+# truncated. The file is in the downloads directory, and vcpkg_download_
+# distfile sets ARCHIVE to the path it used, so that is the path to
+# extract from.
+vcpkg_extract_source_archive(EXTRACTED
+  ARCHIVE "${ARCHIVE}"
 )
+
+# The asset carries the prefix "pace-sdk-<version>/", so the directory
+# that holds CMakeLists.txt is one level below where it was extracted.
+set(SOURCE_PATH "${EXTRACTED}/pace-sdk-${VERSION}")
+if(NOT EXISTS "${SOURCE_PATH}/CMakeLists.txt")
+  message(FATAL_ERROR "the extracted asset has no CMakeLists.txt at ${SOURCE_PATH}")
+endif()
 
 # The release asset is built with:
 #
