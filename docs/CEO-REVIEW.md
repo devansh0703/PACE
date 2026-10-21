@@ -640,6 +640,30 @@ Six scope proposals are offered in 0G and none is approved. They are listed in t
 - **Freedom to operate.** No USPTO, Espacenet or Google Patents search was performed. The plan's FTO position rests on using only OS primitives, which is a sound design posture, but it is not a legal opinion and must not be described as one.
 - **Windows and macOS support.** Not built, not compiled, not tested. Linux only is verified.
 
+## Finding status since this review
+
+The review was written against the implementation as it stood on 2026-10-21,
+before the Windows and macOS backends, the packaging, the eBPF tier and the
+later reviews existed. Its findings are tracked here so none is silently
+dropped.
+
+| Finding | What it said | Status |
+|---|---|---|
+| **A2** | The cycles half is the weakest part and the plan does not rank it | **Closed.** Binding decision D8 makes the time attribution the verified core and the cycle figures a labelled convenience. The API, the naming and both sites follow it |
+| **A3** | The Windows backend is a promise the plan has not scoped | **Closed.** The backend exists. The tier tables in the README and the integration guide state exactly what Windows and macOS can and cannot do, and the samples mark the split as unavailable rather than zero. No parity is implied |
+| **A4** | The API has no way to say "I could not measure this" | **Closed.** `PACE_SAMPLE_F_HAS_PREEMPTED` and `PACE_SAMPLE_F_HAS_BLOCKED` carry the distinction, and the backend contract has a `has_split` field behind them. The analyzer prints a dash for a figure it did not measure |
+| **T1** | No test for the TSC detection | **Closed.** `tests/unit/test_primitives.c` checks that the reference counter advances, that it agrees with the wall clock to within 5 %, that the frequency is plausible, and that the conversion helper's edges are right |
+| **T2** | No test for the `/proc` parsers | **Closed.** The same file checks the `/proc/<tid>/schedstat` field shape, the switch counters against the file, and that the run-queue delay is not confused with the on-CPU time — the exact failure a mixed-up parser would produce |
+| **T3** | The Windows and macOS backends have no test and no compile check | **Closed.** Both backends exist. The Windows suite runs under Wine: 77 unit, 96 lifecycle and 7 primitive checks. The macOS backend and its suites cross-compile to Mach-O arm64 against the real Mach headers, and CI builds them natively |
+| — | The clock helpers would be copied into each backend, inviting a copy-paste | **Closed.** `src/pace_clock.c` holds the platform-neutral helpers, and the per-platform clock sources stay in the backends. The triplicated multiplexing scale is now one implementation |
+| — | `keep_perf_fds_open` is named but not implemented | **Closed.** It is implemented and the flag's effect is described in the integration guide |
+
+**The three findings that were genuinely open are now closed, and each
+closed finding has a test that would have caught the problem it
+described.** The remaining open items are not findings of this review but
+gaps in the plan itself, and they are listed in the plan's definition of
+done.
+
 ## Recommendation
 
 Ship the two-tier measurement as a *time attribution* product rather than a *cycle* product, and lead every claim with the positioning that survives contact with Intel VTune — portable, embeddable, privilege-free, in-process — because the plan's current differentiation premise is factually false, and a vendor who reads both the PACE site and the VTune documentation will otherwise conclude the product does not exist; then take the six blast-radius scope proposals (eBPF tier, session stats, "unknown"-capable sample flags, tolerant parsing, unknown-state reporting, and a non-vacuous verify) as a single batch, because the measurement itself is already verified and correct, and the remaining risk is entirely in how the product is positioned and how honestly it reports what it could not measure.
