@@ -428,6 +428,13 @@ static pace_status pace_fill_sample(pace_session *session, pace_thread *thread,
      * both quantities are known rather than merely absent. */
     flags |= PACE_SAMPLE_F_HAS_PREEMPTED | PACE_SAMPLE_F_HAS_BLOCKED;
   }
+  if (raw->preempted_from_bpf) {
+    /* The preemption was measured from the scheduler's own events, not
+     * from the kernel's run-queue delay counter. The two differ
+     * substantially on some kernels, so the consumer is told which one
+     * it got. */
+    flags |= PACE_SAMPLE_F_PREEMPTED_FROM_EVENTS;
+  }
 
   double hz = session->reference_hz;
 

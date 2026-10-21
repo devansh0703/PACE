@@ -138,7 +138,24 @@ enum {
    * When this flag is clear, the platform could not separate blocking from
    * preemption, and blocked_ns carries no information.
    */
-  PACE_SAMPLE_F_HAS_BLOCKED = 1u << 7
+  PACE_SAMPLE_F_HAS_BLOCKED = 1u << 7,
+  /**
+   * pace_sample::preempted_ns was measured from the scheduler's own
+   * events rather than from the kernel's run-queue delay counter.
+   *
+   * The two measure the same phenomenon and they do not agree: the
+   * kernel's counter is the time from queueing to dequeuing, so a thread
+   * that is queued and then migrated loses the interval. Measured on a CI
+   * runner, the kernel's counter reported 0.30 s where the scheduler's own
+   * events showed 1.81 s -- an 80 % undercount -- while the on-CPU time
+   * and the total off-CPU time both agreed with perf.
+   *
+   * So the source of the preemption matters, and a consumer that cares
+   * about the accuracy of the split can tell which one it got. The flag
+   * is clear when the platform had no scheduler-event tier, which
+   * includes Windows and macOS.
+   */
+  PACE_SAMPLE_F_PREEMPTED_FROM_EVENTS = 1u << 8
 };
 
 /**

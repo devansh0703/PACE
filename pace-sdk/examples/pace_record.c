@@ -35,6 +35,14 @@ typedef struct {
   pace_thread *handle;
 } worker;
 
+/* The samples, counted by whether their preemption came from the
+ * scheduler's own events or from the kernel's run-queue delay counter.
+ *
+ * The two are different measurements and they differ substantially on
+ * some kernels, so the count says which one the trace carries. */
+static volatile int g_samples_from_events = 0;
+static volatile int g_samples_from_counter = 0;
+
 static void *worker_main(void *arg) {
   worker *w = (worker *)arg;
   pace_thread *handle = NULL;
@@ -54,6 +62,11 @@ static void *worker_main(void *arg) {
     (void)acc;
 
     pace_session_sample(w->session, handle, &sample);
+    if (sample.flags & PACE_SAMPLE_F_PREEMPTED_FROM_EVENTS) {
+      __atomic_fetch_add(&g_samples_from_events, 1, __ATOMIC_RELAXED);
+    } else {
+      __atomic_fetch_add(&g_samples_from_counter, 1, __ATOMIC_RELAXED);
+    }
     pace_trace_write_sample(g_trace, w->tid, &sample);
   }
   return NULL;
@@ -144,6 +157,10 @@ int main(int argc, char **argv) {
   fprintf(stderr, "the eBPF tier is %s; %" PRIu64 " samples, %" PRIu64 " degraded\n",
           stats.ebpf_available ? "attached" : "not available", stats.samples_taken,
           stats.degraded_samples);
+  fprintf(stderr,
+          "  the samples' preemption came from the scheduler's own events in %d of "
+          "them, and from the kernel's run-queue delay counter in %d\n",
+          g_samples_from_events, g_samples_from_counter);
 
 
 
