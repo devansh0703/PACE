@@ -39,6 +39,7 @@ import os
 import platform
 import statistics
 import subprocess
+import tempfile
 import sys
 import time
 from dataclasses import asdict, dataclass, field
@@ -46,7 +47,18 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
 BUILD = REPO / "build"
-SCRATCH = Path("/home/devansh/.hermes/cache/scratch/pace-verify")
+# Where the harness puts its temporary files.
+#
+# It is a temporary directory, so it is created under the system temp
+# directory, which is where the platform says temporary files go. The
+# path is overridable so a CI runner can point it at a directory it
+# controls.
+SCRATCH = Path(
+    os.environ.get(
+        "PACE_VERIFY_SCRATCH",
+        str(Path(tempfile.gettempdir()) / "pace-verify"),
+    )
+)
 
 
 @dataclass

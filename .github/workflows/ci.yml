@@ -221,7 +221,13 @@ jobs:
           # The harness imports nothing outside the standard library, so
           # there is nothing to install. It runs the SDK's in-process
           # verifier and compares against the kernel's own accounting.
-          python3 tests/verify/verify_accuracy.py \
+          #
+          # It needs root for the perf-sched cross-checks, because
+          # perf's scheduler tracing is privileged. Without it those
+          # checks skip, and the artifact would carry fewer measurements
+          # than the committed one, so the documents' figures would not
+          # match it.
+          sudo -n python3 tests/verify/verify_accuracy.py \
             --repetitions 30 \
             --duration-ms 400 \
             --output results/accuracy.json
