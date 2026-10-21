@@ -86,6 +86,20 @@ int main(int argc, char **argv) {
 
   pace_trace_flush(g_trace);
   pace_trace_close(g_trace);
+
+  /* The tier's state is reported, so a run's log says which measurement
+   * it carried. A tier that fell back to the procfs tier is a different
+   * measurement from one that used the scheduler's own events, and the
+   * difference is large on some kernels, so it is stated rather than
+   * left to be inferred. */
+  pace_stats stats;
+  memset(&stats, 0, sizeof stats);
+  stats.struct_size = sizeof stats;
+  pace_session_stats(session, &stats);
+  fprintf(stderr, "the eBPF tier is %s; %" PRIu64 " samples, %" PRIu64 " degraded\n",
+          stats.ebpf_available ? "attached" : "not available", stats.samples_taken,
+          stats.degraded_samples);
+
   pace_session_destroy(session);
   free(workers);
   free(threads);
