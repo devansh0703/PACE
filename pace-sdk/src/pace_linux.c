@@ -617,7 +617,17 @@ static pace_status pace_linux_thread_read(pace_session *session, pace_thread *th
 #endif
   out_raw->wall_ns = wall_now;
   out_raw->on_cpu_ns = on_cpu_now;
-  out_raw->run_delay_ns = run_delay_ns;
+  /* The run-queue delay, from whichever counter supplied it. The eBPF
+   * tier's value was already stored above, and this assignment would
+   * otherwise overwrite it with the kernel's counter -- which is what
+   * it did, so the tier's measurement was computed and then discarded,
+   * and the SDK reported the kernel's counter in every case.
+   *
+   * The two agree to within a percent on some kernels and differ by 80 %
+   * on others, so which one is in the sample matters. */
+  if (!out_raw->preempted_from_bpf) {
+    out_raw->run_delay_ns = run_delay_ns;
+  }
   out_raw->involuntary_switches = involuntary;
   out_raw->voluntary_switches = voluntary;
 
