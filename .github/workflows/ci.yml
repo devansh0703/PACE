@@ -1,0 +1,216 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------- the SDK
+  sdk:
+    name: SDK / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-15]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: devansh0703/pace-sdk
+          path: pace-sdk
+
+      - name: Install the Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang llvm libbpf-dev linux-tools-common linux-tools-generic \
+            pkg-config
+
+      - name: Install the Windows build dependencies
+        if: runner.os == 'Windows'
+        run: choco install -y ninja pkgconfiglite
+
+      - name: Configure
+        working-directory: pace-sdk
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DPACE_BUILD_TESTS=ON \
+            -DPACE_BUILD_BENCH=ON \
+            -DPACE_ENABLE_BPF=ON
+
+      - name: Build
+        working-directory: pace-sdk
+        run: cmake --build build -j 4
+
+      - name: Run the unit tests
+        working-directory: pace-sdk
+        run: |
+          cd build
+          ctest --output-on-failure
+
+      - name: Install
+        working-directory: pace-sdk
+        run: cmake --install build --prefix "${{ github.workspace }}/install"
+
+      - name: Verify a consumer can find_package() the installed package
+        shell: bash
+        working-directory: pace-sdk
+        run: |
+          cat > consumer.cmake <<'EOF'
+          cmake_minimum_required(VERSION 3.24)
+          project(pace_install_check LANGUAGES C)
+          find_package(pace REQUIRED)
+          add_executable(check main.c)
+          target_link_libraries(check PRIVATE pace::pace)
+          EOF
+          cat > main.c <<'EOF'
+          #include <pace/pace.h>
+          #include <stdio.h>
+          int main(void) {
+            pace_config cfg;
+            pace_config_init(&cfg);
+            pace_session *session = NULL;
+            if (pace_session_create(&cfg, &session) != PACE_OK) return 1;
+            pace_sample sample;
+            pace_session_sample_self(session, &sample);
+            printf("on_cpu_ns=%llu\n", (unsigned long long)sample.on_cpu_ns);
+            pace_session_destroy(session);
+            return 0;
+          }
+          EOF
+          cmake -S . -B check-build -G Ninja \
+            -DCMAKE_PREFIX_PATH="${{ github.workspace }}/install"
+          cmake --build check-build
+          ./check-build/check
+
+  # ------------------------------------------------------------- the analyzer
+  analyzer:
+    name: Analyzer / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-15]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: devansh0703/pace-analyzer
+          path: pace-analyzer
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check the formatting
+        working-directory: pace-analyzer
+        run: cargo fmt --check
+
+      - name: Lint
+        working-directory: pace-analyzer
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Build
+        working-directory: pace-analyzer
+        run: cargo build --release
+
+      - name: Test
+        working-directory: pace-analyzer
+        run: cargo test --release
+
+  # ------------------------------------------------------- the verification
+  accuracy:
+    name: Accuracy harness
+    runs-on: ubuntu-24.04
+    needs: sdk
+
+    steps:
+      # pace-sdk is its own git repository, so it is checked out into a
+      # subdirectory rather than at the workspace root.
+      - uses: actions/checkout@v4
+        with:
+          repository: devansh0703/pace-sdk
+          path: pace-sdk
+
+      - name: Install the dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm libbpf-dev linux-tools-generic python3-pip
+
+      - name: Build the SDK
+        working-directory: pace-sdk
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DPACE_BUILD_BENCH=OFF -DPACE_ENABLE_BPF=ON
+          cmake --build build -j 4
+
+      - name: Run the accuracy harness
+        working-directory: pace-sdk
+        run: |
+          python3 -m pip install --break-system-packages --user numpy
+          python3 tests/verify/verify_accuracy.py \
+            --repetitions 30 \
+            --duration-ms 400 \
+            --output results/accuracy.json
+
+      - name: Publish the result artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: accuracy-results
+          path: pace-sdk/results/accuracy.json
+
+  # ---------------------------------------------------------------- websites
+  websites:
+    name: Websites
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: devansh0703/websites
+          path: websites
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: websites/*/package-lock.json
+
+      - name: Build the pace-sdk site
+        working-directory: websites/pace-sdk
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build the pace-analyzer site
+        working-directory: websites/pace-analyzer
+        run: |
+          npm ci
+          npm run build
+
+      - name: Check that no site contains a placeholder
+        working-directory: websites
+        run: |
+          # A site with a TODO, a lorem ipsum or an unfilled template is a
+          # half-finished product and must not ship.
+          if grep -rniE 'lorem ipsum|TODO|FIXME|placeholder text|coming soon' \
+               websites/*/dist --include='*.html'; then
+            echo "::error::a built page contains placeholder content"
+            exit 1
+          fi
+          echo "no placeholder content in the built sites"

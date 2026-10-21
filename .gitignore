@@ -1,3 +1,21 @@
-# product repos are independent git repositories
-/pace-sdk/
-/pace-analyzer/
+# Build output
+build/
+dist/
+target/
+node_modules/
+Cargo.lock
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+compile_commands.json
+
+# The SDK's generated eBPF skeleton
+pace-sdk/src/bpf/skel/
+
+# Editor and OS noise
+.vscode/
+.idea/
+.DS_Store
+*.swp
