@@ -151,7 +151,82 @@ address sanitizers on every push.
 
 The result: **0 races** and **0 memory errors** across all four suites.
 
-### 6. The CI could not have run — **Medium**
+### 6. The reference frequency was measured over too short a window — **High**
+
+The calibration that measures the TSC against `CLOCK_MONOTONIC` computed
+the elapsed time as
+
+```c
+(t1.tv_sec - t0.tv_sec) * 1e9 + t1.tv_nsec
+```
+
+using `t1.tv_nsec`, the nanoseconds *within the second*, rather than the
+difference from `t0.tv_nsec`. So the loop exited as soon as the absolute
+nanosecond field passed 20 million — a few milliseconds rather than
+twenty — and the frequency it computed was too low: 3.0 % low on this
+machine, and 28.7 % low on a CI runner, where it was large enough to
+fail the primitive tests.
+
+Separately, CPUID leaf 0x16's EAX was being used as the TSC frequency.
+It is the *base* frequency, which on a turboing CPU or under a hypervisor
+is not the TSC's frequency at all. Leaf 0x15's crystal ratio is the only
+CPUID value that is the TSC's frequency, and the calibration is the
+honest one, because it measures the TSC against the same wall clock the
+samples are measured against.
+
+**Found by running the tests on a second machine.** Nothing about this
+is visible by reading the code: the arithmetic is plausible, and on the
+machine where the code was written the error was small enough to pass
+the tests.
+
+**Fix.** The elapsed time is computed correctly, the borrow across a
+second boundary is handled explicitly, the calibration is the primary
+source and the crystal ratio the cross-check, and leaf 0x16 is not used.
+Measured after the fix: 2918440724 Hz against a true 2918400000 Hz, a
+ratio of 1.00001.
+
+### 7. A reused sample struct carried the previous call's fields — **High**
+
+The sample is written field by field, and some fields are only written
+on some paths, so a caller that reused one sample struct across calls
+would see the previous call's source, cycle count and ratio in the
+fields that call did not write. The macOS CI runner caught it, because
+there the struct is not zeroed between calls.
+
+The source had a second half: it was only set when a hardware counter
+had been read, so a sample on the clock tier carried *no* source at all,
+and a consumer could not tell a clock-derived cycle count from a
+measured one.
+
+**Fix.** The sample is cleared before it is filled, so every field in it
+is written by the fill function, and the source is set on every path.
+The test is a new one on every platform, because the failure is silent
+where the caller happens to zero the struct.
+
+### 8. The eBPF tier had never attached — **High**
+
+The tier used the `tracepoint/` section form, which attaches through a
+BPF link onto a perf event. The kernel gates that link on
+`bpf_capable()` in the *initial* user namespace, so on a host with a
+nested one it fails with `EACCES` even for uid 0 holding every
+capability. The SDK falls back to the procfs tier, which is correct, so
+the failure was invisible: the tier was reported as available in the
+documentation and had never once attached.
+
+**Found by asking whether a claim was still true.** The documentation
+said "the program loads and attaches as root". That had been true on an
+earlier kernel, and the kernel had been replaced. Checking it found a
+tier that had never worked on the current one.
+
+**Fix.** The tier uses `raw_tracepoint/` sections, opened with
+`BPF_RAW_TRACEPOINT_OPEN`, which is gated differently. The raw form's
+arguments are the tracepoint's proto arguments and the verifier rejects
+a program that reads past the last one, so the counts were measured
+rather than assumed: `sched_wakeup` 1, `sched_switch` 2,
+`sched_process_exit` 2. `tests/verify/verify_ebpf.c` attaches the tier,
+runs 32 contending spinners and reads the tier's own maps back.
+
+### 9. The CI could not have run — **Medium**
 
 The workflow checked out one repository at the workspace root and then
 ran the analyzer, the SDK and the websites from it. The three products are
@@ -258,6 +333,9 @@ that the numbers are checked.
 REALITY: premise-table pass "The SDK links into a third-party process without adding threads, allocating on the hot path, or requiring privilege." pace-sdk/src/pace_session.c:288-307
 REALITY: premise-table pass "Sampling is safe to call concurrently from different threads, and the promise is checked under the thread sanitizer rather than asserted." pace-sdk/tests/unit/test_concurrency.c:1
 REALITY: premise-table pass "The session counters are incremented atomically, because a plain increment from two threads loses one." pace-sdk/src/pace_session.c:396
+REALITY: premise-table pass "The reference frequency is measured against the same wall clock the samples use, and the CPUID base frequency is not used as the TSC frequency." pace-sdk/src/pace_linux.c:72
+REALITY: premise-table pass "A reused sample struct carries no stale fields, because the sample is cleared before it is filled." pace-sdk/src/pace_session.c:303
+REALITY: premise-table pass "The eBPF tier attaches, and it is verified by reading its own maps back after a contended workload." pace-sdk/tests/verify/verify_ebpf.c:1
 REALITY: premise-table pass "The hot path is 524 ns at tier 0 and does not allocate." pace-sdk/examples/pace_overhead
 REALITY: premise-table pass "The decomposition invariant holds exactly on every sample." pace-sdk/results/accuracy.json
 REALITY: premise-table pass "A thread handle cannot be used with the wrong session." pace-sdk/src/pace_session.c:336

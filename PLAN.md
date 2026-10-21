@@ -288,14 +288,14 @@ Two separate sites, one per product, in `websites/`.
 Each step ends with something runnable and committed.
 
 1. `pace-sdk`: CMake skeleton, C API header, clock + TSC detection, Linux tier-0 backend, tier-1 perf backend, sample hot path, unit tests. **DONE.**
-2. `pace-sdk`: the eBPF tier. **DONE.**
+2. `pace-sdk`: the eBPF tier. **DONE.** The tier was written against the `tracepoint/` section form, which attaches through a BPF link onto a perf event. The kernel gates that link on `bpf_capable()` in the *initial* user namespace, so on a host with a nested one it failed with `EACCES` even for uid 0 holding every capability, and the tier had never attached. It now uses `raw_tracepoint/` sections, which are opened with `BPF_RAW_TRACEPOINT_OPEN` and are gated differently. The raw form's arguments are the tracepoint's proto arguments, and the counts were measured rather than assumed: `sched_wakeup` 1, `sched_switch` 2, `sched_process_exit` 2. `tests/verify/verify_ebpf.c` attaches the tier, runs 32 contending spinners and reads the tier's own maps back: 22 of the 32 were preempted, 73.5 ms of 75.7 ms of wall time, and the decomposition held exactly.
 3. `pace-sdk`: JSONL trace writer, C++ wrapper, examples. **DONE.**
-4. `pace-sdk`: Windows and macOS backends. **DONE.** The Windows backend uses `GetThreadTimes` and `QueryThreadCycleTime`; the macOS backend uses `CLOCK_THREAD_CPUTIME_ID` and the Mach `thread_info` interface. The Windows suite was run under Wine: 77 unit checks and 96 lifecycle checks, 0 failures. The macOS backend was cross-compiled to Mach-O arm64 against the real Mach headers, and its test suite runs in CI. Neither platform can do the three-way split without privilege, so their samples carry neither `PACE_SAMPLE_F_HAS_PREEMPTED` nor `PACE_SAMPLE_F_HAS_BLOCKED`, and the test suite asserts that.
+4. `pace-sdk`: Windows and macOS backends. **DONE.** The Windows backend uses `GetThreadTimes` and `QueryThreadCycleTime`; the macOS backend uses `CLOCK_THREAD_CPUTIME_ID` and the Mach `thread_info` interface. The Windows suite was run under Wine: 77 unit checks, 110 lifecycle checks and 29 concurrency checks, 0 failures. The macOS backend was cross-compiled to Mach-O arm64 against the real Mach headers, and its test suite runs in CI. Neither platform can do the three-way split without privilege, so their samples carry neither `PACE_SAMPLE_F_HAS_PREEMPTED` nor `PACE_SAMPLE_F_HAS_BLOCKED`, and the test suite asserts that.
 5. `pace-analyzer`: crate, parsers, attribution model, terminal report, HTML report, `verify`, benches. **DONE.**
 6. Benchmarks and verification: the accuracy harness with real ground truth, results committed. **DONE.**
 7. Websites: both sites, with the real measured numbers. **DONE.**
 8. Licensing and packaging: BUSL text, vcpkg port, Conan recipe, `find_package` docs, integration guide. **DONE.** The Conan recipe was verified end to end with `conan create`, and a separate consumer project builds against the installed tree with `find_package(pace)` and runs.
-9. CI: GitHub Actions on Linux/Windows/macOS, running the accuracy harness and committing its artifact. **DONE.** The workflow is written and each job checks out the repository it needs, because the three products are separate repositories.
+9. CI: GitHub Actions on Linux/Windows/macOS, running the accuracy harness and committing its artifact. **DONE.** One repository, one checkout per job. The SDK builds and tests on all three platforms, the analyzer on all three, and the accuracy harness runs the cross-checks against the kernel's own accounting and against perf.
 
 ### 7. Explicitly not in scope
 
@@ -390,7 +390,7 @@ Each step ends with something runnable and committed.
 - The thread-local fast path dereferenced a handle whose session had been destroyed. The session now carries a unique id and the fast path validates by id, so a stale handle is recognised without touching freed memory.
 - The kernel recycles a thread id after the thread holding it exits, and the new thread inherited the dead thread's handle and baselines. The handle now records its owning pthread_t, and registration reclaims the slot.
 - pace_session_stats now rejects a struct_size this build cannot fill, instead of accepting any smaller size and returning zeroes.
-- The CI could not have run: the three products are separate repositories, so each job now checks out the repository it needs into a subdirectory and runs there.
+- The CI could not have run: the three products were separate repositories, so each job checked out the repository it needed into a subdirectory. They are now one repository, so each job checks out the same tree.
 - The cached /proc/<tid>/schedstat descriptor is re-opened when the thread's start time changes, amortised over 1000 samples so the check does not dominate the sample.
 - The analyzer's parsers stay hand-written: a regex over untrusted trace files carries catastrophic backtracking.
 - The Windows and macOS backends remain the next wave, not a ship blocker. An absent backend fails loudly at pace_session_create; a wrong one would produce a plausible-looking number.
