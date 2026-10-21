@@ -34,7 +34,7 @@ ROWS = [
         "perf sched timehist, &quot;run time&quot; column",
     ),
     (
-        "preempted time vs perf sched timehist 'sch delay' column (reported, not gated)",
+        "preempted time vs perf sched timehist 'sch delay' column",
         "preempted time",
         "perf sched timehist, &quot;sch delay&quot; column",
     ),
@@ -55,7 +55,16 @@ def build_rows(artifact: dict) -> str:
     by_name = {m["name"]: m for m in artifact["measurements"]}
     out: list[str] = []
     for name, quantity, compared in ROWS:
+        # The name is matched as a PREFIX, because a measurement's name
+        # carries a suffix that says how it is reported -- "(reported,
+        # not gated)" -- and that suffix is the reporting policy rather
+        # than the measurement's identity.
         m = by_name.get(name)
+        if m is None:
+            for candidate, value in by_name.items():
+                if candidate.startswith(name):
+                    m = value
+                    break
         if m is None:
             raise SystemExit(f"the artifact has no measurement named {name!r}")
         median = m["median_relative_error"] * 100.0

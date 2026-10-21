@@ -69,6 +69,22 @@ def current_numbers(artifact: dict) -> dict:
     published must match.
     """
     by_name = {m["name"]: m for m in artifact["measurements"]}
+
+    def measurement(prefix: str) -> dict:
+        """The measurement whose name starts with the given one.
+
+        A measurement's name carries a suffix that says how it is
+        reported -- "(reported, not gated)" -- and an exact lookup
+        missed every suffixed name. The check then agreed with a
+        document's stale figure, because it had the same fault.
+        """
+        if prefix in by_name:
+            return by_name[prefix]
+        for name, value in by_name.items():
+            if name.startswith(prefix):
+                return value
+        raise KeyError(prefix)
+
     published = []
     for m in artifact["measurements"]:
         if m.get("skipped"):
@@ -76,22 +92,89 @@ def current_numbers(artifact: dict) -> dict:
         # Both the median and the p95 are published, in different tables.
         published.append(m["median_relative_error"] * 100.0)
         published.append(m["p95_relative_error"] * 100.0)
+
+    # The same figures, but indexed by the source they were measured
+    # against, so a line's figure is checked against the source that
+    # line names.
+    #
+    # Without this, a line's figure was accepted if it matched ANY
+    # published figure, and the decomposition's median is 0.0 -- the
+    # invariant is exact -- so a stale "0.0000 %" for a different
+    # measurement matched it and the check passed.
+    by_source: dict[str, list[float]] = {}
+    for m in artifact["measurements"]:
+        if m.get("skipped"):
+            continue
+        by_source[m["name"]] = [
+            m["median_relative_error"] * 100.0,
+            m["p95_relative_error"] * 100.0,
+        ]
     thresholds = sorted(
         {m["threshold"] * 100.0 for m in artifact["measurements"] if m.get("threshold")}
     )
     return {
         "samples": artifact["decomposition"]["total_samples"],
-        "cfs": by_name[
+        "cfs": measurement(
             "on-CPU time vs /proc/<tid>/schedstat (kernel cfs accounting)"
-        ]["median_relative_error"]
+        )["median_relative_error"]
         * 100.0,
-        "perf": by_name[
+        "perf": measurement(
             "on-CPU time vs perf sched timehist 'run time' column"
-        ]["median_relative_error"]
+        )["median_relative_error"]
         * 100.0,
         "published": published,
+        "by_source": by_source,
         "thresholds": thresholds,
     }
+
+
+# The phrase that identifies a measurement's source, in a line.
+#
+# The documents write the source in a shorter form than the harness
+# names it: "perf sched timehist, \"sch delay\" column" against the
+# harness's "preempted time vs perf sched timehist 'sch delay' column".
+# So the source is identified by the words that are common to both.
+SOURCE_PHRASES = [
+    ("cfs accounting", "on-CPU time vs /proc/<tid>/schedstat (kernel cfs accounting)"),
+    ("utime+stime", "on-CPU time vs /proc/<tid>/stat utime+stime (tick granularity)"),
+    ("run-queue delay", "preempted time vs /proc/<tid>/schedstat (kernel run-queue delay)"),
+    ("sch delay", "preempted time vs perf sched timehist 'sch delay' column"),
+    ("wait time", "off-CPU time (preempted + blocked) vs perf 'wait time' column"),
+    ("run time", "on-CPU time vs perf sched timehist 'run time' column"),
+    ("CLOCK_MONOTONIC", "wall time vs CLOCK_MONOTONIC read by the verifier"),
+    ("wall minus on-CPU", "blocked time vs wall minus on-CPU (sleeping window)"),
+    ("decomposition", "decomposition balance on a recorded trace"),
+    ("the tier's own cumulative", "the trace's preempted total vs the tier's own cumulative"),
+]
+
+
+def _normalise(text: str) -> str:
+    """Lowercase, with the hyphens turned into spaces.
+
+    The documents write "run time" and "run-time" interchangeably, and
+    a matcher that sees them as different sources misses half the
+    figures.
+    """
+    return text.lower().replace("-", " ").replace("_", " ")
+
+
+def _sources_in_order(line: str, by_source: dict[str, list[float]]) -> list:
+    """The sources the line names, in the order they appear.
+
+    Each is the position in the line and the figures published for it.
+    """
+    lowered = _normalise(line)
+    found = []
+    for phrase, name in SOURCE_PHRASES:
+        index = lowered.find(_normalise(phrase))
+        if index < 0:
+            continue
+        for measurement_name, figures in by_source.items():
+            if measurement_name.startswith(name):
+                found.append((index, figures))
+                break
+    found.sort(key=lambda item: item[0])
+    return found
 
 
 def main() -> int:
@@ -165,12 +248,31 @@ def main() -> int:
                 re.I,
             ):
                 continue
+            # Each figure is attributed to the source that PRECEDES it,
+            # because a sentence can name two sources and carry a figure
+            # for each:
+            #
+            #   "agrees with the kernel's own cfs accounting to 0.0006 %
+            #    and with perf's run-time column to 0.0574 %"
+            #
+            # A line with one source behaves the same way.
+            #
+            # The sources are located in the line, and each figure takes
+            # the nearest source before it.
+            sources = _sources_in_order(line, now["by_source"])
             for m in re.finditer(r"(\d+\.\d+)\s*%", line):
                 value = float(m.group(1))
-                if any(
-                    abs(value - published) < 0.00005
-                    for published in now["published"]
-                ):
+                preceding = [s for s in sources if s[0] < m.start()]
+                if preceding:
+                    allowed = preceding[-1][1]
+                elif sources:
+                    allowed = sources[0][1]
+                else:
+                    # The line does not name its source, so the figure
+                    # cannot be attributed to one. The "any published
+                    # figure" rule is better than nothing.
+                    allowed = now["published"]
+                if any(abs(value - figure) < 0.00005 for figure in allowed):
                     continue
                 # A threshold is not a measurement. The harness's own
                 # thresholds are published in the artifact.
@@ -179,7 +281,7 @@ def main() -> int:
                 failures.append(
                     f"{rel}:{i}: quotes {value:.4f} % as an agreement figure, "
                     f"but the artifact says "
-                    + ", ".join(f"{p:.4f} %" for p in now["published"])
+                    + ", ".join(f"{p:.4f} %" for p in allowed)
                 )
 
     # 2. Every historical document must be dated, so a reader can tell that

@@ -88,7 +88,17 @@ def load_artifact() -> dict:
 
 
 def measurement_values(artifact: dict) -> dict[str, dict]:
-    """The median and p95 for every measurement, keyed by name."""
+    """The median and p95 for every measurement, keyed by name.
+
+    The lookup is by PREFIX, because a measurement's name carries a
+    suffix that says how it is reported -- "(reported, not gated)" --
+    and that suffix is the reporting policy rather than the
+    measurement's identity.
+
+    An exact lookup silently missed every suffixed name, and the row in
+    the document kept the figure it already had. The check had the same
+    fault, so it agreed with the stale number.
+    """
     out = {}
     for m in artifact["measurements"]:
         out[m["name"]] = {
@@ -97,6 +107,16 @@ def measurement_values(artifact: dict) -> dict[str, dict]:
             "skipped": m.get("skipped", False),
         }
     return out
+
+
+def find_measurement(values: dict[str, dict], name: str) -> dict | None:
+    """The measurement whose name starts with the given one."""
+    if name in values:
+        return values[name]
+    for candidate, value in values.items():
+        if candidate.startswith(name):
+            return value
+    return None
 
 
 def format_percent(value: float) -> str:
@@ -129,7 +149,7 @@ def sources_in(text: str, values: dict[str, dict]) -> list[tuple[int, dict]]:
     lowered = normalise(text)
     found = []
     for phrase, name in ROWS:
-        value = values.get(name)
+        value = find_measurement(values, name)
         if value is None or value["skipped"]:
             continue
         needle = normalise(phrase)
