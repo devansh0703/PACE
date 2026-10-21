@@ -442,16 +442,46 @@ def main() -> int:
                 pace_preempted.get(tid, 0.0) > 0 or pace_blocked.get(tid, 0.0) > 0
                 for tid in pace_preempted
             )
+
+            # The two sides must cover the SAME window, or the comparison
+            # is of two different measurements.
+            #
+            # PACE's window for a thread is the sum of its samples' wall
+            # time. perf's is its wait time plus its run time. So the two
+            # windows can be compared, and a thread whose windows differ
+            # by more than a few percent is not comparable.
+            #
+            # They differ because perf's recording spans the whole run of
+            # the demo, and a worker that stopped sampling early has a
+            # shorter PACE window. On a contended machine the workers
+            # finish at different times, so a few of them are short by a
+            # large fraction -- and a comparison against a different
+            # window is not a cross-check.
+            def windows_match(tid: int) -> bool:
+                pace_window = (
+                    pace_preempted.get(tid, 0.0)
+                    + pace_blocked.get(tid, 0.0)
+                    + pace_on_cpu.get(tid, 0.0)
+                )
+                perf_window = perf_wait.get(tid, 0.0) + perf_runtime.get(tid, 0.0)
+                if pace_window <= 0 or perf_window <= 0:
+                    return False
+                return abs(pace_window - perf_window) / perf_window < 0.05
+
             for tid, truth in perf_schdelay.items():
                 measured = pace_preempted.get(tid)
                 if measured is None or truth <= 0:
                     continue
                 if not pace_has_attribution:
                     continue
+                if not windows_match(tid):
+                    continue
                 perf_preempted_errors.append((measured - truth) / truth)
             for tid, truth in perf_runtime.items():
                 measured = pace_on_cpu.get(tid)
                 if measured is None or truth <= 0:
+                    continue
+                if not windows_match(tid):
                     continue
                 perf_on_cpu_errors.append(relative_error(measured, truth))
             # The signed difference, for the same reason as the sch-delay
@@ -478,6 +508,8 @@ def main() -> int:
                     continue
                 measured = pace_preempted[tid] + pace_blocked.get(tid, 0.0)
                 if truth <= 0:
+                    continue
+                if not windows_match(tid):
                     continue
                 perf_offcpu_errors.append((measured - truth) / truth)
             perf_sched_available = True
