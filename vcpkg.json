@@ -1,0 +1,29 @@
+{
+  "name": "pace",
+  "version": "0.1.0",
+  "description": "Preemption-Aware Time Attribution Engine: per-thread on-CPU, preempted and blocked time for developer-tool vendors",
+  "homepage": "https://github.com/devansh0703/pace-sdk",
+  "license": "BUSL-1.1",
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    }
+  ],
+  "features": {
+    "ebpf": {
+      "description": "Build the eBPF scheduler tier (Linux only, needs clang with a BPF target, bpftool and libbpf)",
+      "supports": "linux",
+      "dependencies": [
+        {
+          "name": "libbpf",
+          "platform": "linux"
+        }
+      ]
+    }
+  }
+}
