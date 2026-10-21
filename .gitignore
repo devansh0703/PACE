@@ -3,7 +3,6 @@ build/
 dist/
 target/
 node_modules/
-Cargo.lock
 *.o
 *.a
 *.so
