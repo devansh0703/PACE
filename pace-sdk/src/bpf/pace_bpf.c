@@ -41,11 +41,26 @@ const char *pace_bpf_unavailable_reason(int reason) {
   }
 }
 
+/* libbpf's diagnostics. A load or attach failure says nothing about why
+ * otherwise, and the messages belong on stderr, where a developer
+ * expects them. */
+static int pace_bpf_diag_print(enum libbpf_print_level level, const char *fmt,
+                               va_list args) {
+  /* The debug level is noise, and the warning level says what went wrong
+   * in a form a developer can act on. */
+  if (level == LIBBPF_DEBUG) return 0;
+  return vfprintf(stderr, fmt, args);
+}
+
 struct pace_bpf *pace_bpf_open(void) {
   struct pace_bpf *bpf = (struct pace_bpf *)calloc(1, sizeof *bpf);
   if (!bpf) return NULL;
 
-  libbpf_set_print(NULL);
+  /* libbpf's diagnostics are left on: a load or attach failure says
+   * nothing about why otherwise, and the messages go to stderr, where a
+   * developer expects them. The SDK's own error reporting is separate
+   * and structured. */
+  libbpf_set_print(pace_bpf_diag_print);
 
   struct pace_sched_bpf *skel = pace_sched_bpf__open();
   if (!skel) {
@@ -60,6 +75,13 @@ struct pace_bpf *pace_bpf_open(void) {
     return bpf;
   }
 
+  /* The skeleton's attach handles the raw_tracepoint/ form: it opens
+   * each program with BPF_RAW_TRACEPOINT_OPEN, which resolves the
+   * tracepoint through the kernel's BTF.
+   *
+   * The explicit alternative, bpf_program__attach_raw_tracepoint, looks
+   * the name up through tracefs instead, and that lookup fails on hosts
+   * where the tracefs mount is not where libbpf expects it. */
   err = pace_sched_bpf__attach(skel);
   if (err) {
     bpf->reason = PACE_BPF_NO_PERMISSION;

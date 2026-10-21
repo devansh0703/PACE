@@ -141,14 +141,51 @@ require it.
 scheduler's own events, so counting them is a direct measurement of the
 involuntary switches rather than an inference from a cumulative counter.
 
-**Permission.** Attaching to a tracepoint needs `CAP_PERFMON` or root, and
-the kernel needs BTF for CO-RE relocation. The object is built against the
-building kernel's BTF and relocated at load time, so one binary runs
-anywhere with BTF.
+**Permission.** Attaching needs the kernel's raw tracepoints opened, which
+needs `CAP_BPF` and `CAP_PERFMON`, and the kernel needs BTF for CO-RE
+relocation. The object is built against the building kernel's BTF and
+relocated at load time, so one binary runs anywhere with BTF.
 
-**Verification.** The program loads and attaches as root (`LOAD OK`,
-`program fd: 9`, `ATTACH OK`); unprivileged the load fails with
-`Operation not permitted`, and the SDK falls back cleanly.
+**Raw tracepoints, not tracepoint programs.** The first implementation used
+the `tracepoint/sched/sched_wakeup` section form. That form attaches
+through a BPF link onto a perf event, and the kernel gates the link on
+`bpf_capable()` **in the initial user namespace**. On a host with a nested
+user namespace, or with a hardened BPF policy, that check fails with
+`EACCES` even for uid 0 holding every capability.
+
+The measurement was:
+
+| | `perf_event_open` | `bpf_link_create` |
+|---|---|---|
+| a program with no maps | succeeds | succeeds |
+| a program with maps | succeeds | **`EACCES`** |
+
+`PERF_EVENT_IOC_SET_BPF` fails the same way, and `perf_event_paranoid` has
+no effect on it: the check is a capability check, not a sysctl check. The
+raw tracepoint form is opened with `BPF_RAW_TRACEPOINT_OPEN`, which is
+gated differently, and it attaches. The tier therefore uses
+`raw_tracepoint/` sections.
+
+**The raw form's cost.** A raw tracepoint's arguments are the tracepoint's
+*proto* arguments, and the verifier rejects a program that reads past the
+last one. The counts were measured on this kernel:
+
+| Tracepoint | Arguments | What they are |
+|---|---|---|
+| `sched_wakeup` | 1 | the `task_struct` that was woken |
+| `sched_switch` | 2 | the previous and the next `task_struct` |
+| `sched_process_exit` | 2 | the `task_struct` and the exit code |
+
+The thread id is therefore read from the `task_struct` with a CO-RE read,
+which is also what keeps the program portable across kernels whose
+`task_struct` layout differs.
+
+**Verification.** `tests/verify/verify_ebpf.c` attaches the tier, runs 32
+contending spinners, and reads the tier's own maps back. Measured on this
+machine: **22 of 32 workers were preempted, 73.5 ms of 75.7 ms of wall
+time**, and the decomposition held exactly on every sample. Unprivileged
+the tier reports itself unavailable and the procfs tier carries the
+measurement.
 
 ### The reference clock
 

@@ -12,6 +12,41 @@ cmake_minimum_required(VERSION 3.24)
 find_program(PACE_BPFTOOL NAMES bpftool)
 find_program(PACE_CLANG NAMES clang clang-18 clang-17 clang-16)
 
+# On a distribution where bpftool lives in the linux-tools package, the
+# installed /usr/sbin/bpftool is a wrapper that runs the version matching
+# the running kernel. On a CI runner the matching package is not
+# installed, so the wrapper exits non-zero even though it is present.
+#
+# A present-but-broken bpftool is worse than a missing one: the build
+# fails at the first vmlinux.h generation, long after the tier was
+# decided to be enabled. So the tool is exercised, and the tier is
+# disabled if it does not work.
+if(PACE_BPFTOOL)
+  execute_process(
+    COMMAND ${PACE_BPFTOOL} version
+    RESULT_VARIABLE PACE_BPFTOOL_RC
+    OUTPUT_QUIET
+    ERROR_QUIET)
+  if(NOT PACE_BPFTOOL_RC EQUAL 0)
+    message(STATUS "PACE: bpftool at ${PACE_BPFTOOL} does not run; disabling the eBPF tier")
+    set(PACE_BPFTOOL "")
+  endif()
+endif()
+
+# clang's BPF target is what compiles the program, and a clang without it
+# is as useless as a missing clang.
+if(PACE_CLANG)
+  execute_process(
+    COMMAND ${PACE_CLANG} -target bpf -x c -c /dev/null -o /dev/null
+    RESULT_VARIABLE PACE_CLANG_BPF_RC
+    OUTPUT_QUIET
+    ERROR_QUIET)
+  if(NOT PACE_CLANG_BPF_RC EQUAL 0)
+    message(STATUS "PACE: clang at ${PACE_CLANG} has no BPF target; disabling the eBPF tier")
+    set(PACE_CLANG "")
+  endif()
+endif()
+
 if(PACE_BPFTOOL AND PACE_CLANG)
   set(PACE_VMLINUX_H ${CMAKE_CURRENT_BINARY_DIR}/vmlinux.h)
   set(PACE_BPF_OBJ ${CMAKE_CURRENT_BINARY_DIR}/pace_sched.bpf.o)
@@ -51,3 +86,8 @@ else()
   set(PACE_HAVE_BPF OFF)
   message(STATUS "PACE: eBPF tier disabled (clang with a BPF target and bpftool are required)")
 endif()
+
+# add_subdirectory gives the subdirectory its own scope, so the parent
+# cannot see a variable set here. PARENT_SCOPE is how a subdirectory
+# reports a decision back to the caller.
+set(PACE_HAVE_BPF ${PACE_HAVE_BPF} PARENT_SCOPE)

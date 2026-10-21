@@ -84,15 +84,23 @@ add_library(pace ${PACE_SOURCES})
 add_library(pace::pace ALIAS pace)
 
 if(PACE_ENABLE_BPF)
+  # The bpf subdirectory decides whether the tier is actually possible:
+  # it needs a working bpftool and a clang with a BPF target, and on a
+  # machine with neither it turns itself off rather than failing the
+  # build. PACE_HAVE_BPF carries the answer back out, because a variable
+  # set inside add_subdirectory does not propagate to the calling scope.
   add_subdirectory(src/bpf)
-  target_sources(pace PRIVATE src/bpf/pace_bpf.c)
-  target_compile_definitions(pace PRIVATE PACE_WITH_BPF=1)
-  # The generated skeleton header lives in the bpf subdirectory's binary
-  # directory. Set here because a variable set inside add_subdirectory does
-  # not propagate back to the calling scope.
-  target_include_directories(pace PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src/bpf)
-  # The generated skeleton header must exist before pace_bpf.c compiles.
-  add_dependencies(pace pace_bpf_skeleton)
+
+  if(PACE_HAVE_BPF)
+    target_sources(pace PRIVATE src/bpf/pace_bpf.c)
+    target_compile_definitions(pace PRIVATE PACE_WITH_BPF=1)
+    # The generated skeleton header lives in the bpf subdirectory's binary
+    # directory. Set here because a variable set inside add_subdirectory does
+    # not propagate back to the calling scope.
+    target_include_directories(pace PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src/bpf)
+    # The generated skeleton header must exist before pace_bpf.c compiles.
+    add_dependencies(pace pace_bpf_skeleton)
+  endif()
 endif()
 
 target_include_directories(pace
@@ -127,7 +135,7 @@ endif()
 find_package(Threads REQUIRED)
 target_link_libraries(pace PUBLIC Threads::Threads)
 
-if(PACE_ENABLE_BPF)
+if(PACE_ENABLE_BPF AND PACE_HAVE_BPF)
   find_library(PACE_LIBBPF NAMES bpf REQUIRED)
   target_link_libraries(pace PRIVATE ${PACE_LIBBPF})
   target_include_directories(pace PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/bpf)
@@ -201,6 +209,13 @@ if(PACE_BUILD_TESTS)
   target_link_libraries(pace_concurrency_tests PRIVATE pace)
   target_include_directories(pace_concurrency_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   add_test(NAME pace_concurrency_tests COMMAND pace_concurrency_tests)
+
+  # The eBPF tier's verification needs privilege, so it is a separate
+  # binary and not part of ctest: ctest runs unprivileged, and the tier
+  # reports itself unavailable there, which is a legitimate state.
+  add_executable(pace_verify_ebpf tests/verify/verify_ebpf.c)
+  target_link_libraries(pace_verify_ebpf PRIVATE pace)
+  target_include_directories(pace_verify_ebpf PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
   add_executable(pace_lifecycle_tests tests/unit/test_lifecycle.c)
   target_link_libraries(pace_lifecycle_tests PRIVATE pace)
