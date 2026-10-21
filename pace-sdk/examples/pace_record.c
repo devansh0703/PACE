@@ -33,6 +33,15 @@ typedef struct {
   uint64_t tid;
   /** The thread's handle, for the SDK's resolved kernel id. */
   pace_thread *handle;
+  /**
+   * The worker's own slot in the totals below.
+   *
+   * The slot is assigned when the worker is created rather than found
+   * by a search at sample time: with 48 threads searching for a free
+   * slot together, two of them can find the same one and both write to
+   * it, and the total comes out short.
+   */
+  int slot;
 } worker;
 
 /* The samples, counted by whether their preemption came from the
@@ -45,7 +54,7 @@ static volatile int g_samples_from_counter = 0;
 
 /* The trace's preempted total per thread, so it can be compared against
  * the tier's own cumulative for the same thread. */
-#define PACE_TRACKED_THREADS 64
+#define PACE_TRACKED_THREADS 256
 static uint64_t g_trace_preempted[PACE_TRACKED_THREADS];
 static uint64_t g_trace_wall[PACE_TRACKED_THREADS];
 static uint64_t g_trace_on_cpu[PACE_TRACKED_THREADS];
@@ -81,21 +90,11 @@ static void *worker_main(void *arg) {
      * cumulative for the same thread. The two must agree: the trace
      * holds the differences of the tier's counter, and the counter is
      * the same number. */
-    for (int i = 0; i < PACE_TRACKED_THREADS; i++) {
-      if (g_trace_tids[i] == w->tid) {
-        g_trace_preempted[i] += sample.preempted_ns;
-        g_trace_wall[i] += sample.wall_ns;
-        g_trace_on_cpu[i] += sample.on_cpu_ns;
-        break;
-      }
-      if (g_trace_tids[i] == 0) {
-        g_trace_tids[i] = w->tid;
-        g_trace_preempted[i] = sample.preempted_ns;
-        g_trace_wall[i] = sample.wall_ns;
-        g_trace_on_cpu[i] = sample.on_cpu_ns;
-        break;
-      }
-    }
+    int slot = w->slot;
+    g_trace_tids[slot] = w->tid;
+    g_trace_preempted[slot] += sample.preempted_ns;
+    g_trace_wall[slot] += sample.wall_ns;
+    g_trace_on_cpu[slot] += sample.on_cpu_ns;
   }
   return NULL;
 }
@@ -127,6 +126,7 @@ int main(int argc, char **argv) {
 
   for (int i = 0; i < nthreads; i++) {
     workers[i].session = session;
+    workers[i].slot = i;
     pthread_create(&threads[i], NULL, worker_main, &workers[i]);
   }
 

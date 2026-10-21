@@ -37,6 +37,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import statistics
 import subprocess
 import tempfile
@@ -328,7 +329,7 @@ def main() -> int:
     # So it is reported rather than swallowed by the capture.
     tier_report = (demo_run.stderr or b"").decode("utf-8", "replace")
     for line in tier_report.splitlines():
-        if "tier" in line.lower() or "events" in line.lower() or "counter" in line.lower():
+        if line.strip():
             print(f"  the recorded trace: {line.strip()}")
     total_samples = 0
     violating_samples = 0
@@ -366,7 +367,7 @@ def main() -> int:
             )
             perf_tier = (perf_run.stderr or b"").decode("utf-8", "replace")
             for line in perf_tier.splitlines():
-                if "tier" in line.lower() or "events" in line.lower() or "counter" in line.lower():
+                if line.strip():
                     print(f"  the perf-wrapped trace: {line.strip()}")
             timehist = subprocess.run(
                 ["perf", "sched", "timehist", "-i", str(SCRATCH / "sched.data")],
@@ -546,6 +547,31 @@ def main() -> int:
         except (subprocess.TimeoutExpired, FileNotFoundError):
             perf_sched_available = False
 
+    # The trace's preempted total against the tier's own cumulative, for
+    # the same threads. The trace holds the differences of the tier's
+    # counter, so the sum of the differences is the counter's total.
+    #
+    # This is the check that would have caught the defect the CI runner
+    # exposed: the trace's total was 15 s where the tier's counter said
+    # 87 s, and the differencing was throwing the difference away.
+    tier_ratio_errors = []
+    if tier_report:
+        m = re.search(
+            r"the trace's preempted total: (\d+) ns against the tier's (\d+) ns",
+            tier_report,
+        )
+        if m and int(m.group(2)) > 0:
+            trace_total = int(m.group(1))
+            tier_total = int(m.group(2))
+            # The trace's total cannot exceed the tier's: the trace
+            # starts later. It should not be much less either.
+            ratio = trace_total / tier_total
+            print(
+                f"  the trace's preempted total is {ratio:.4f} of the tier's "
+                f"cumulative ({trace_total} ns against {tier_total} ns)"
+            )
+            tier_ratio_errors.append(ratio - 1.0)
+
     measurements = [
         summarise(
             "on-CPU time vs /proc/<tid>/schedstat (kernel cfs accounting)",
@@ -601,6 +627,17 @@ def main() -> int:
         # nothing to do with PACE. The difference is reported instead,
         # and the gate that matters is the one against the kernel's own
         # counter.
+        summarise(
+            "the trace's preempted total vs the tier's own cumulative "
+            "(reported, not gated)",
+            "fraction of the tier's cumulative",
+            tier_ratio_errors,
+            0.05,
+            "5% median; the trace holds the differences of the tier's "
+            "counter, so the two must agree. The trace's starts at each "
+            "thread's first sample and the tier's at the program load, so "
+            "the trace's is the smaller one",
+        ),
         summarise(
             "preempted time vs perf sched timehist 'sch delay' column (reported, not gated)",
             "seconds",
