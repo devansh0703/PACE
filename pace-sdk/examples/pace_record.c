@@ -43,6 +43,12 @@ typedef struct {
 static volatile int g_samples_from_events = 0;
 static volatile int g_samples_from_counter = 0;
 
+/* The trace's preempted total per thread, so it can be compared against
+ * the tier's own cumulative for the same thread. */
+#define PACE_TRACKED_THREADS 64
+static uint64_t g_trace_preempted[PACE_TRACKED_THREADS];
+static uint64_t g_trace_tids[PACE_TRACKED_THREADS];
+
 static void *worker_main(void *arg) {
   worker *w = (worker *)arg;
   pace_thread *handle = NULL;
@@ -68,6 +74,22 @@ static void *worker_main(void *arg) {
       __atomic_fetch_add(&g_samples_from_counter, 1, __ATOMIC_RELAXED);
     }
     pace_trace_write_sample(g_trace, w->tid, &sample);
+
+    /* The trace's total for this thread, against the tier's own
+     * cumulative for the same thread. The two must agree: the trace
+     * holds the differences of the tier's counter, and the counter is
+     * the same number. */
+    for (int i = 0; i < PACE_TRACKED_THREADS; i++) {
+      if (g_trace_tids[i] == w->tid) {
+        g_trace_preempted[i] += sample.preempted_ns;
+        break;
+      }
+      if (g_trace_tids[i] == 0) {
+        g_trace_tids[i] = w->tid;
+        g_trace_preempted[i] = sample.preempted_ns;
+        break;
+      }
+    }
   }
   return NULL;
 }
@@ -136,6 +158,21 @@ int main(int argc, char **argv) {
               " ns; the kernel's thread id was resolved for %d of %d, and %d had a "
               "value\n",
               total, resolved, nthreads, read);
+
+      /* The trace's total against the tier's total, for the same
+       * threads. The two must agree: the trace holds the differences of
+       * the tier's counter, so the sum of the differences is the
+       * counter's total. Where they do not, the loss is in the
+       * differencing, and the ratio says how much. */
+      uint64_t trace_total = 0;
+      for (int i = 0; i < PACE_TRACKED_THREADS; i++) {
+        if (g_trace_tids[i] == 0) continue;
+        trace_total += g_trace_preempted[i];
+      }
+      fprintf(stderr,
+              "  the trace's preempted total: %" PRIu64 " ns against the tier's %" PRIu64
+              " ns\n",
+              trace_total, total);
     }
   }
 #endif
