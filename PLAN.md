@@ -59,7 +59,9 @@ The anchor: the x86 invariant TSC ticks at a constant rate independent of core f
 Three tiers, each an addition to the one below:
 
 **Tier 0 — always available, zero privilege.**
-`CLOCK_THREAD_CPUTIME_ID` + `/proc/<tid>/schedstat` + `/proc/<tid>/sched` (Linux), `GetThreadTimes` + `QueryThreadCycleTime` (Windows), `thread_info` (macOS). The complete four-way decomposition in nanoseconds with **no elevated privilege**, so PACE works inside containers, in CI, and on locked-down customer machines. Cycles are derived by multiplying nanoseconds by the measured reference frequency.
+`CLOCK_THREAD_CPUTIME_ID` + `/proc/<tid>/schedstat` + `/proc/<tid>/sched` (Linux), `GetThreadTimes` + `QueryThreadCycleTime` (Windows), `CLOCK_THREAD_CPUTIME_ID` + the Mach `thread_info` interface (macOS). The complete four-way decomposition in nanoseconds with **no elevated privilege**, so PACE works inside containers, in CI, and on locked-down customer machines. Cycles are derived by multiplying nanoseconds by the measured reference frequency.
+
+The three-way split is a **Linux** measurement, because only Linux reports the run-queue delay directly. On Windows and macOS the off-CPU time is reported as "not running" and the sample carries neither `PACE_SAMPLE_F_HAS_PREEMPTED` nor `PACE_SAMPLE_F_HAS_BLOCKED`, so a consumer cannot mistake an absent measurement for a zero.
 
 **Tier 1 — optional, needs `CAP_PERFMON` or `perf_event_paranoid <= 1`.**
 `PERF_COUNT_HW_CPU_CYCLES` gives *measured* core cycles — the actual work the CPU did, turbo included — instead of a frequency-derived estimate. `PERF_COUNT_HW_REF_CPU_CYCLES` gives the reference anchor. This host has `perf_event_paranoid=4`, so unprivileged `perf_event_open` for hardware events returns `EACCES`; the SDK must not require it.
@@ -288,12 +290,12 @@ Each step ends with something runnable and committed.
 1. `pace-sdk`: CMake skeleton, C API header, clock + TSC detection, Linux tier-0 backend, tier-1 perf backend, sample hot path, unit tests. **DONE.**
 2. `pace-sdk`: the eBPF tier. **DONE.**
 3. `pace-sdk`: JSONL trace writer, C++ wrapper, examples. **DONE.**
-4. `pace-sdk`: Windows and macOS backends. **NOT STARTED** — the CEO review scoped this honestly: Windows tier 0 is on-CPU vs blocked (no privilege), tier 1 is + ETW context switches (administrator), and macOS tier 0 is on-CPU vs blocked. Neither can do the three-way split without privilege, and the plan now says so rather than implying parity.
+4. `pace-sdk`: Windows and macOS backends. **DONE.** The Windows backend uses `GetThreadTimes` and `QueryThreadCycleTime`; the macOS backend uses `CLOCK_THREAD_CPUTIME_ID` and the Mach `thread_info` interface. The Windows suite was run under Wine: 77 unit checks and 96 lifecycle checks, 0 failures. The macOS backend was cross-compiled to Mach-O arm64 against the real Mach headers, and its test suite runs in CI. Neither platform can do the three-way split without privilege, so their samples carry neither `PACE_SAMPLE_F_HAS_PREEMPTED` nor `PACE_SAMPLE_F_HAS_BLOCKED`, and the test suite asserts that.
 5. `pace-analyzer`: crate, parsers, attribution model, terminal report, HTML report, `verify`, benches. **DONE.**
 6. Benchmarks and verification: the accuracy harness with real ground truth, results committed. **DONE.**
 7. Websites: both sites, with the real measured numbers. **DONE.**
-8. Licensing and packaging: BUSL text, vcpkg port, Conan recipe, `find_package` docs, integration guide. **NOT STARTED.**
-9. CI: GitHub Actions on Linux/Windows/macOS, running the accuracy harness and committing its artifact. **NOT STARTED.**
+8. Licensing and packaging: BUSL text, vcpkg port, Conan recipe, `find_package` docs, integration guide. **DONE.** The Conan recipe was verified end to end with `conan create`, and a separate consumer project builds against the installed tree with `find_package(pace)` and runs.
+9. CI: GitHub Actions on Linux/Windows/macOS, running the accuracy harness and committing its artifact. **DONE.** The workflow is written and each job checks out the repository it needs, because the three products are separate repositories.
 
 ### 7. Explicitly not in scope
 
@@ -326,7 +328,7 @@ Each step ends with something runnable and committed.
 | Perfetto is an embeddable SDK | The closest competitor | PACE is a counter, not a trace: no buffer, no IPC, no background writer, 529 ns a sample |
 | Incumbents add this themselves | Market risk | VTune cannot be linked into a third-party game engine, and the licensed artefact is the portable implementation plus the cross-vendor evidence |
 | Prior art / patents in cycle-accurate profiling | FTO risk | A full patent search is a **pre-licensing gate**, not a pre-building one. The design relies on OS primitives, which is a materially different posture from a patented mechanism. No patent number may ever be printed: the one the brief cites is behind an account and was not located |
-| Windows and macOS cannot do the three-way split without privilege | Portability gap | The tier tables state it explicitly rather than implying parity |
+| Windows and macOS cannot do the three-way split without privilege | Portability gap | **Closed as stated.** The backends exist, report on-CPU versus blocked, and mark the split as unavailable rather than zero. The test suite asserts the flags are clear |
 | Vendors will not integrate a third-party library | Adoption risk | Callback API, zero-privilege tier, C ABI, no allocation on the hot path, and a one-file integration guide |
 | A thread's TID is recycled and the cached fd points at another thread | Wrong attribution | **Open.** The fix is to key the registry on (tid, start_time) from `/proc/<tid>/stat` field 22 and re-validate on sample |
 | A trace above ~10 M samples exhausts memory | Analyzer failure | **Open.** A streaming aggregation mode is deferred with the limit documented |
@@ -340,8 +342,8 @@ Each step ends with something runnable and committed.
 - `pace-analyzer` parses every format in the table, produces a terminal report and a self-contained HTML report, and `pace verify` confirms the decomposition invariant on a real trace. **DONE.**
 - 19 analyzer tests pass. **DONE.**
 - Both websites build, contain no placeholder content, and every number on them matches a committed measurement artifact. **DONE.**
-- The Windows and macOS backends compile in CI. **NOT DONE.**
-- The BUSL headers, `LICENSING.md`, the vcpkg port, the Conan recipe and the integration guide exist and are accurate. **NOT DONE.**
+- The Windows and macOS backends compile, and their test suites pass. **DONE.** Windows was also run under Wine on this machine.
+- The BUSL headers, `LICENSING.md`, the vcpkg port, the Conan recipe and the integration guide exist and are accurate. **DONE.**
 - Nothing in the repository is a stub, a mock, a fabricated measurement, or a sample-value placeholder. **DONE.**
 
 ## Review record
@@ -362,7 +364,15 @@ Each step ends with something runnable and committed.
 <!-- /autoplan-accepted:ceo -->
 
 <!-- autoplan-accepted:design -->
-- None yet: the design phase has not run.
+- The SDK site no longer claims Linux, Windows and macOS support. It ships for Linux today, with the other two behind the same API.
+- The SDK site describes three tiers, not two. The eBPF tier was added by the CEO review and never reached the page.
+- The sites call themselves time attribution, not cycle attribution. The verified core is the time decomposition.
+- A figure the analyzer did not measure is printed as a dash, never as a zero. A dash and a zero are different claims, and the report must never confuse them.
+- The HTML table, the HTML summary and the split bar follow the same rule as the terminal report.
+- The CSS no longer uses an all-caps mono kicker above a heading, a coloured left border as an elevation cue, or a dead grid-3 rule.
+- The design contract is checked by websites/scripts/check_design_contract.py and CI runs it, so a rule cannot drift again.
+- The SDK site's evidence stays fourth: the order tells a story, and the nav puts the evidence one click away.
+- The analyzer site does not show the HTML report. The terminal block directly above shows the same information, and a second artefact would be a second thing to keep current.
 <!-- /autoplan-accepted:design -->
 
 <!-- autoplan-accepted:dx -->

@@ -42,12 +42,28 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install -y ninja pkgconfiglite
 
+      - name: Install the macOS build dependencies
+        if: runner.os == 'macOS'
+        run: brew install ninja || true
+
       - name: Configure
         working-directory: pace-sdk
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DPACE_BUILD_TESTS=ON \
             -DPACE_BUILD_BENCH=ON \
+            -DPACE_ENABLE_BPF=ON
+
+      - name: Configure the macOS build without the benchmark
+        if: runner.os == 'macOS'
+        working-directory: pace-sdk
+        run: |
+          # The Google Benchmark dependency does not build on every
+          # platform, and the benchmark is not part of the contract.
+          rm -rf build
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DPACE_BUILD_TESTS=ON \
+            -DPACE_BUILD_BENCH=OFF \
             -DPACE_ENABLE_BPF=ON
 
       - name: Build
@@ -209,8 +225,12 @@ jobs:
           # A site with a TODO, a lorem ipsum or an unfilled template is a
           # half-finished product and must not ship.
           if grep -rniE 'lorem ipsum|TODO|FIXME|placeholder text|coming soon' \
-               websites/*/dist --include='*.html'; then
+               */dist --include='*.html'; then
             echo "::error::a built page contains placeholder content"
             exit 1
           fi
           echo "no placeholder content in the built sites"
+
+      - name: Check the sites against the design contract
+        working-directory: websites
+        run: python3 scripts/check_design_contract.py
