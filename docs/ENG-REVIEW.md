@@ -226,7 +226,81 @@ rather than assumed: `sched_wakeup` 1, `sched_switch` 2,
 `sched_process_exit` 2. `tests/verify/verify_ebpf.c` attaches the tier,
 runs 32 contending spinners and reads the tier's own maps back.
 
-### 9. The CI could not have run — **Medium**
+### 9. The verification compared two different windows — **High**
+
+The accuracy harness's cross-check against `perf sched timehist` failed
+on the CI runner and passed on the machine it was developed on. The
+cause was not the library and not the harness's arithmetic: the two
+sides were measuring different windows.
+
+perf's recording spans the whole run of the demo. PACE's window for a
+thread is the sum of its samples' wall time. On a contended machine the
+workers finish at different times, so a few of them stopped sampling
+early and have a much shorter PACE window.
+
+Measured on the CI runner's shape, 48 workers on 4 CPUs:
+
+| | PACE | perf |
+|---|---|---|
+| on-CPU | 0.1103 s | 0.1104 s (run time) |
+| preempted | 1.1541 s | 1.2058 s (sch delay) |
+| **the total window** | **1.3653 s** | **1.8970 s** |
+
+PACE's on-CPU agreed with perf's run time to 0.04 %. The disagreement
+was entirely in the total, and it was the window.
+
+A comparison against a different window is not a cross-check, it is a
+comparison of two different things. The checks now require the two
+windows to agree to within 5 %, and a thread whose windows differ is
+excluded with the reason stated and the count reported.
+
+**The measurements, before and after, on the CI runner's shape:**
+
+| Check | Before | After |
+|---|---|---|
+| preempted vs perf sch delay | 79.06 % | 3.04 % |
+| off-CPU vs perf wait time | 5.96 % | 0.90 % |
+
+**Found by running the harness on a machine with a different shape.** The
+harness was developed on a 16-CPU machine and the CI runner has 4. The
+`taskset` equivalent reproduced it exactly, which is how the cause was
+isolated.
+
+### 10. A zero preemption on a kernel that is not counting — **High**
+
+The kernel's `sched_info_on()` decides whether
+`/proc/<tid>/schedstat` carries the run-queue delay. With
+`CONFIG_SCHEDSTATS` compiled in the statistics are always collected;
+with only `CONFIG_TASK_DELAY_ACCT` they are collected only while
+`/proc/sys/kernel/task_delayacct` is 1, and that toggle is off by
+default.
+
+On such a kernel the file reads `0 0 0`, and PACE reported **zero
+preemption** — on a machine where the threads were preempted
+constantly. A preemption of zero is a measurement, and there it was a
+false one: the thread was preempted, the kernel just was not counting
+it.
+
+**The SDK now detects whether the kernel is collecting the statistics,
+and when it is not the sample does not claim the split.** The absence
+of a measurement is reported as an absence, and never as a confident
+zero.
+
+### 11. A data race I introduced, caught by the sanitizer — **Medium**
+
+The detection above caches its answer in a static int, which is written
+by whichever thread arrives first and read by the others. The thread
+sanitizer the project already runs caught it on the CI runner, in the
+same job that had found the original race in the session counters.
+
+The cache is atomic now. The value is computed once and never changes,
+so a relaxed load and a release store are enough.
+
+This is worth recording for what it says about the process: the
+sanitizer that was added to catch a class of bug caught a bug of that
+class within a day of being added, in code written after it.
+
+### 12. The CI could not have run — **Medium**
 
 The workflow checked out one repository at the workspace root and then
 ran the analyzer, the SDK and the websites from it. The three products are
@@ -336,6 +410,8 @@ REALITY: premise-table pass "The session counters are incremented atomically, be
 REALITY: premise-table pass "The reference frequency is measured against the same wall clock the samples use, and the CPUID base frequency is not used as the TSC frequency." pace-sdk/src/pace_linux.c:72
 REALITY: premise-table pass "A reused sample struct carries no stale fields, because the sample is cleared before it is filled." pace-sdk/src/pace_session.c:303
 REALITY: premise-table pass "The eBPF tier attaches, and it is verified by reading its own maps back after a contended workload." pace-sdk/tests/verify/verify_ebpf.c:1
+REALITY: premise-table pass "The perf cross-checks compare the same window on both sides, and a thread whose windows differ is excluded rather than compared." pace-sdk/tests/verify/verify_accuracy.py:1
+REALITY: premise-table pass "A preemption of zero is never reported when the kernel is not collecting the scheduler statistics." pace-sdk/src/pace_linux.c:291
 REALITY: premise-table pass "The hot path is 524 ns at tier 0 and does not allocate." pace-sdk/examples/pace_overhead
 REALITY: premise-table pass "The decomposition invariant holds exactly on every sample." pace-sdk/results/accuracy.json
 REALITY: premise-table pass "A thread handle cannot be used with the wrong session." pace-sdk/src/pace_session.c:336

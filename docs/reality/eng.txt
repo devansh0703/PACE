@@ -4,6 +4,8 @@ REALITY: premise-table pass "The session counters are incremented atomically, be
 REALITY: premise-table pass "The reference frequency is measured against the same wall clock the samples use, and the CPUID base frequency is not used as the TSC frequency." pace-sdk/src/pace_linux.c:72
 REALITY: premise-table pass "A reused sample struct carries no stale fields, because the sample is cleared before it is filled." pace-sdk/src/pace_session.c:303
 REALITY: premise-table pass "The eBPF tier attaches, and it is verified by reading its own maps back after a contended workload." pace-sdk/tests/verify/verify_ebpf.c:1
+REALITY: premise-table pass "The perf cross-checks compare the same window on both sides, and a thread whose windows differ is excluded rather than compared." pace-sdk/tests/verify/verify_accuracy.py:1
+REALITY: premise-table pass "A preemption of zero is never reported when the kernel is not collecting the scheduler statistics." pace-sdk/src/pace_linux.c:291
 REALITY: premise-table pass "The hot path is 524 ns at tier 0 and does not allocate." pace-sdk/examples/pace_overhead
 REALITY: premise-table pass "The decomposition invariant holds exactly on every sample." pace-sdk/results/accuracy.json
 REALITY: premise-table pass "A thread handle cannot be used with the wrong session." pace-sdk/src/pace_session.c:336
