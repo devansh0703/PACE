@@ -60,6 +60,12 @@ static uint64_t g_trace_wall[PACE_TRACKED_THREADS];
 static uint64_t g_trace_on_cpu[PACE_TRACKED_THREADS];
 static uint64_t g_trace_tids[PACE_TRACKED_THREADS];
 
+/* The tier's cumulative, captured before the workers are joined because
+ * a thread's map entry disappears when it exits. */
+static uint64_t g_tier_total = 0;
+static int g_tier_resolved = 0;
+static int g_tier_read = 0;
+
 static void *worker_main(void *arg) {
   worker *w = (worker *)arg;
   pace_thread *handle = NULL;
@@ -159,11 +165,37 @@ int main(int argc, char **argv) {
           total += value;
         }
       }
+      g_tier_total = total;
+      g_tier_resolved = resolved;
+      g_tier_read = read;
+    }
+  }
+#endif
+
+  for (int i = 0; i < nthreads; i++) pthread_join(threads[i], NULL);
+
+#if defined(PACE_WITH_BPF)
+  /* The report is printed AFTER the workers are joined, because the
+   * workers' final samples are the ones that carry the bulk of the
+   * preemption: a thread's last spin is spent waiting for the CPU, so
+   * its last sample carries the whole wait.
+   *
+   * The tier's cumulative was captured before the join, because a
+   * thread's map entry disappears when it exits. So the two are
+   * compared across the join, and the comparison is between the whole
+   * run's two measurements.
+   *
+   * Reading both at the same moment made the comparison a partial: on
+   * a CI runner the partial was 9.1 s against the trace file's 42.7 s,
+   * and the shortfall looked like a defect in the differencing. */
+  {
+    struct pace_bpf *bpf = (struct pace_bpf *)session->bpf;
+    if (bpf && pace_bpf_is_available(bpf)) {
       fprintf(stderr,
               "  the tier's cumulative preemption for the workers: %" PRIu64
               " ns; the kernel's thread id was resolved for %d of %d, and %d had a "
               "value\n",
-              total, resolved, nthreads, read);
+              g_tier_total, g_tier_resolved, nthreads, g_tier_read);
 
       /* The trace's total against the tier's total, for the same
        * threads. The two must agree: the trace holds the differences of
@@ -178,7 +210,7 @@ int main(int argc, char **argv) {
       fprintf(stderr,
               "  the trace's preempted total: %" PRIu64 " ns against the tier's %" PRIu64
               " ns\n",
-              trace_total, total);
+              trace_total, g_tier_total);
 
       /* The on-CPU time against the wall time.
        *
@@ -206,8 +238,6 @@ int main(int argc, char **argv) {
     }
   }
 #endif
-
-  for (int i = 0; i < nthreads; i++) pthread_join(threads[i], NULL);
 
   pace_trace_flush(g_trace);
   pace_trace_close(g_trace);
