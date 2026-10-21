@@ -1,3 +1,4 @@
+<!-- /autoplan restore point: "/home/devansh/.gstack/projects/devansh/main-autoplan-restore-20261021-163220.md" -->
 # PACE — Preemption-Aware Cycle Attribution Engine
 
 Two products from one idea (Idealab #1352567): a licensed C/C++ SDK and an open-source trace analyzer, each with its own website.
