@@ -1,8 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"/home/devansh/kernel_suite/pace-sdk/build-undefined/cmake_install.cmake",
-		"/home/devansh/kernel_suite/pace-sdk/build-undefined/examples/cmake_install.cmake"
-	],
-	"Parallel" : false
-}
