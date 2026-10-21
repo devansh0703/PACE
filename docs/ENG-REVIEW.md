@@ -395,6 +395,70 @@ workspace root, where that path does not exist.
 **Fix.** Each job checks out the repository it needs into a subdirectory
 and runs with that as its working directory.
 
+### 15. The preemption was clipped by the clamp that keeps the decomposition exact — **Critical**
+
+The preemption was 80 % short on a CI runner while the on-CPU time and the
+total off-CPU time both agreed with perf. The invariant held exactly, so
+nothing in the sample was wrong in the way a broken arithmetic would be
+wrong: the split between *preempted* and *blocked* was wrong, and the
+residual went to *blocked*.
+
+The cause was the ORDER of the reads. The sample is the difference
+between two reads of each cumulative quantity — the tier's counter, the
+wall clock and the thread's CPU clock — and the counter was read LAST,
+after the slow `/proc` reads. So the counter's difference covered a
+window that extended past the wall clock's, and on a contended runner the
+thread was preempted *during* the sample.
+
+That preemption landed in the counter's difference for the *previous*
+window, whose wall window was short. The clamp that keeps `blocked` from
+going negative -- which is right, and which the product's invariant
+depends on -- cut it to the short window's off-CPU time. The baseline
+then moved on, so the time was never recovered.
+
+**Fix.** The counter is read FIRST and the two clocks immediately after
+it, so the three windows coincide to within the cost of a map lookup.
+
+Measured on the CI runner, before and after:
+
+| | before | after |
+|---|---|---|
+| preempted vs perf's "sch delay" | 78 % short | **0.25 %** |
+| the trace's total vs the tier's counter | 89 % short | **0.28 %** |
+| the on-CPU time vs perf's "run time" | 0.06 % | 0.06 % |
+| the decomposition invariant | exact | exact |
+
+**The lesson is the one the whole review has been about: a measurement
+that is internally consistent can still be wrong.** The invariant held
+throughout, the on-CPU time was right, and the off-CPU total was right.
+Only the split was wrong, and only under contention, which is the case
+that matters.
+
+### 16. The vcpkg port could not be consumed at all — **High**
+
+The port was in `pace-sdk/vcpkg/`, with the manifest beside it. vcpkg
+reads a port from a directory holding `<port>/portfile.cmake` and
+`<port>/vcpkg.json` — the layout an overlay directory uses. So the
+dependency a consumer declares had nothing to resolve to, and the
+installation path the documentation advertised did not exist.
+
+The port also had a build failure: the thread-id resolver calls the
+tier's map lookup functions, but it sat outside the `PACE_WITH_BPF`
+guard. The port builds without the tier by default, because libbpf's
+static link against libelf does not resolve reliably in vcpkg, so the
+port did not build at all. The SDK's most common installation path was
+broken, and the local build never found it because the local build has
+the tier.
+
+**Fix.** The port is at `ports/pace/`, the resolver is inside the guard,
+and CI installs the port from the *published* release and builds a
+consumer against the installed package. A port that installs but is not
+usable is not a working port, so the job runs the consumer.
+
+The published release is what the port installs, so the CI job is the
+only thing that can catch a port that does not build -- and it found the
+guard bug on its first run.
+
 ## What was checked and found correct
 
 - **The decomposition invariant.** Clamped with signed arithmetic
