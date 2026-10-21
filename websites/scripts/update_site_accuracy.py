@@ -34,7 +34,7 @@ ROWS = [
         "perf sched timehist, &quot;run time&quot; column",
     ),
     (
-        "preempted time vs perf sched timehist 'sch delay' column",
+        "preempted time vs perf sched timehist 'sch delay' column (reported, not gated)",
         "preempted time",
         "perf sched timehist, &quot;sch delay&quot; column",
     ),

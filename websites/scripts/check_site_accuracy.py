@@ -24,7 +24,7 @@ SITE = ROOT / "pace-sdk" / "src" / "pages" / "index.astro"
 PUBLISHED = [
     "on-CPU time vs /proc/<tid>/schedstat (kernel cfs accounting)",
     "on-CPU time vs perf sched timehist 'run time' column",
-    "preempted time vs perf sched timehist 'sch delay' column",
+    "preempted time vs perf sched timehist 'sch delay' column (reported, not gated)",
     "off-CPU time (preempted + blocked) vs perf 'wait time' column",
     "wall time vs CLOCK_MONOTONIC read by the verifier",
 ]
