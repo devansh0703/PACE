@@ -98,20 +98,28 @@ int main(int argc, char **argv) {
     struct pace_bpf *bpf = (struct pace_bpf *)session->bpf;
     if (bpf && pace_bpf_is_available(bpf)) {
       uint64_t total = 0;
+      int resolved = 0, read = 0;
       for (int i = 0; i < nthreads; i++) {
         uint64_t value = 0;
         /* The map is keyed by the kernel's thread id, which is not the
          * one gettid() returns when there is more than one pid
          * namespace. */
         uint64_t kernel_tid = pace_kernel_thread_id(workers[i].tid);
-        if (kernel_tid == 0) kernel_tid = workers[i].tid;
+        if (kernel_tid == 0) {
+          kernel_tid = workers[i].tid;
+        } else {
+          resolved++;
+        }
         if (pace_bpf_read_preempted_ns(bpf, kernel_tid, &value) == PACE_OK) {
+          if (value > 0) read++;
           total += value;
         }
       }
-      fprintf(stderr, "  the tier's cumulative preemption for the workers: %" PRIu64
-                      " ns\n",
-              total);
+      fprintf(stderr,
+              "  the tier's cumulative preemption for the workers: %" PRIu64
+              " ns; the kernel's thread id was resolved for %d of %d, and %d had a "
+              "value\n",
+              total, resolved, nthreads, read);
     }
   }
 #endif

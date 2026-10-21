@@ -328,7 +328,7 @@ def main() -> int:
     # So it is reported rather than swallowed by the capture.
     tier_report = (demo_run.stderr or b"").decode("utf-8", "replace")
     for line in tier_report.splitlines():
-        if "eBPF tier" in line:
+        if "tier" in line.lower():
             print(f"  the recorded trace: {line.strip()}")
     total_samples = 0
     violating_samples = 0
@@ -366,7 +366,7 @@ def main() -> int:
             )
             perf_tier = (perf_run.stderr or b"").decode("utf-8", "replace")
             for line in perf_tier.splitlines():
-                if "eBPF tier" in line:
+                if "tier" in line.lower():
                     print(f"  the perf-wrapped trace: {line.strip()}")
             timehist = subprocess.run(
                 ["perf", "sched", "timehist", "-i", str(SCRATCH / "sched.data")],
