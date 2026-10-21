@@ -1,0 +1,421 @@
+---
+import '@fontsource/ibm-plex-mono/400.css';
+import '@fontsource/ibm-plex-mono/500.css';
+import '@fontsource/ibm-plex-sans/400.css';
+import '@fontsource/ibm-plex-sans/500.css';
+import '@phosphor-icons/web/regular';
+import '../styles/wire-terminal.css';
+
+const site = {
+  name: 'PACE',
+  product: 'pace-sdk',
+  description:
+    'Per-thread preemption-aware time attribution for developer-tool vendors. Portable, embeddable, no privilege required.',
+  url: 'https://devansh0703.github.io/pace-sdk',
+};
+
+const nav = [
+  { href: '#problem', label: 'The problem' },
+  { href: '#measurement', label: 'Measurement' },
+  { href: '#integration', label: 'Integration' },
+  { href: '#evidence', label: 'Evidence' },
+  { href: '#licence', label: 'Licence' },
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{site.name} — preemption-aware time attribution for tool vendors</title>
+    <meta name="description" content={site.description} />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23131311'/><path d='M6 22 L12 10 L18 22 L24 10' stroke='%23e8a33d' stroke-width='2.5' fill='none'/></svg>" />
+  </head>
+  <body>
+    <nav>
+      <div class="wrap">
+        <a class="brand" href="/">
+          <i class="ph ph-waveform" style="font-size:18px"></i>
+          PACE
+        </a>
+        <div class="links">
+          {nav.map((item) => <a href={item.href}>{item.label}</a>)}
+          <a href="#contact" class="btn" style="padding:5px 12px;font-size:13px">Evaluation licence</a>
+        </div>
+      </div>
+    </nav>
+
+    <div class="wrap">
+      <!-- --------------------------------------------------- the problem -->
+      <section class="hero" id="problem">
+        <div class="section-label">The measurement gap</div>
+        <h1>Your profiler knows the thread was slow. It does not know why.</h1>
+        <p class="lede">
+          A frame takes 40&nbsp;ms. The thread's CPU clock says 12&nbsp;ms. The other 28&nbsp;ms
+          went somewhere, and a CPU-time counter cannot tell you where. It was either the
+          scheduler taking the core away, or the thread waiting on a lock or on I/O. Those
+          need opposite fixes, and today the tools that report the symptom do not
+          separate the cause.
+        </p>
+        <p class="lede">
+          <strong>pace-sdk</strong> is a C and C++ library that answers it per thread, per
+          sample: the time it ran, the time it lost to the scheduler, the time it spent
+          blocked, and the wall time they add up to. You link it into your profiler. It
+          runs with no elevated privilege and costs under a microsecond a sample, on
+          Linux, Windows and macOS.
+        </p>
+        <div class="cta-row">
+          <a class="btn primary" href="#contact">
+            <i class="ph ph-file-text"></i>
+            Request an evaluation licence
+          </a>
+          <a class="btn" href="#integration">
+            <i class="ph ph-code"></i>
+            See the integration
+          </a>
+        </div>
+      </section>
+
+      <!-- -------------------------------------------------- the readout -->
+      <section id="measurement">
+        <div class="section-label">What a sample contains</div>
+        <div class="grid-2">
+          <div class="panel">
+            <h3><i class="ph ph-split"></i> One window, four buckets</h3>
+            <p>
+              Every sample carries the wall duration and the three ways a thread can
+              spend it. The arithmetic is exact and the invariant is checked by the
+              analyzer, not asserted by the vendor.
+            </p>
+            <p>
+              <code>wall == on_cpu + preempted + blocked</code>
+            </p>
+            <p>
+              Preemption is the run-queue wait: the time the thread was runnable and
+              the scheduler had other work. Blocking is the remainder: sleeping, on a
+              lock, or on I/O.
+            </p>
+          </div>
+          <div class="panel">
+            <h3><i class="ph ph-gauge"></i> Three tiers, one API</h3>
+            <p>
+              <strong>Tier 0</strong> uses only clocks and procfs. It needs no privilege
+              at all, so it works inside containers, in CI, and on a customer's locked-down
+              build machine. It reports nanoseconds and reference cycles.
+            </p>
+            <p>
+              <strong>Tier 1</strong> adds the hardware performance counter when
+              <code>CAP_PERFMON</code> is available, giving measured core cycles instead of
+              a frequency model. Each sample carries the tier it came from, so no consumer
+              can mistake a derived number for a measured one.
+            </p>
+            <p>
+              <strong>Tier 2</strong> attaches to the scheduler's own events through eBPF,
+              which measures the switches directly rather than inferring them. It needs
+              privilege and it is an addition: if it cannot attach, the measurement is
+              unchanged.
+            </p>
+            <p>
+              The three-way split is a Linux measurement, because only Linux reports the
+              run-queue delay directly. On Windows and macOS PACE measures on-CPU versus
+              blocked and marks the split as unavailable rather than reporting a
+              confident zero.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------- the numbers -->
+      <section id="evidence">
+        <div class="section-label">Measured, not modelled</div>
+        <p>
+          The readout below is a real run on an oversubscribed machine: 48 threads on 16
+          hardware threads. Every thread lost roughly 60&nbsp;% of its wall time to
+          preemption while never blocking on anything. A conventional profiler reports
+          the CPU time and the wall time and leaves the difference unattributed.
+        </p>
+
+        <div class="readout">
+          <div class="readout-head">
+            <span>pace-sdk / thread 3164905 / contended run</span>
+            <span>source: clock tier, no privilege</span>
+          </div>
+          <div class="readout-body">
+            <div class="bar">
+              <span class="oncpu" style="width: 26%"></span>
+              <span class="preempt" style="width: 60%"></span>
+              <span class="blocked" style="width: 14%"></span>
+            </div>
+            <div class="readout-rows">
+              <span class="k">on-CPU</span><span class="v">654.75 ms</span>
+              <span class="k">preempted</span><span class="v crit">1.22 s</span>
+              <span class="k">blocked</span><span class="v">131.12 ms</span>
+              <span class="k">wall</span><span class="v">2.01 s</span>
+              <span class="k">preempted share</span><span class="v crit">60.8 %</span>
+              <span class="k">involuntary switches</span><span class="v">134</span>
+            </div>
+            <div class="legend">
+              <span><i class="key" style="background: var(--accent)"></i> on-CPU</span>
+              <span><i class="key" style="background: var(--sev-critical)"></i> preempted</span>
+              <span><i class="key" style="background: var(--sev-info)"></i> blocked</span>
+            </div>
+          </div>
+        </div>
+
+        <h3 style="margin-top:36px">Cross-checked against independent sources</h3>
+        <p>
+          The verification harness runs the library and the kernel's own accounting over
+          the same thread and the same window, then compares. 30 repetitions, 101,047 recorded samples, on an
+          i7-13620H running kernel 7.3.0.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Quantity</th>
+              <th>Compared against</th>
+              <th>Median error</th>
+              <th>p95</th>
+              <th>n</th>
+            </tr>
+          </thead>
+          <tbody>
+                                    <tr>
+              <td>on-CPU time</td>
+              <td>/proc/&lt;tid&gt;/schedstat, kernel cfs accounting</td>
+              <td class="ok">0.0039 %</td>
+              <td class="ok">0.0052 %</td>
+              <td>15</td>
+            </tr>
+            <tr>
+              <td>on-CPU time</td>
+              <td>perf sched timehist, &quot;run time&quot; column</td>
+              <td class="ok">0.0380 %</td>
+              <td class="ok">0.0849 %</td>
+              <td>48</td>
+            </tr>
+            <tr>
+              <td>preempted time</td>
+              <td>perf sched timehist, &quot;sch delay&quot; column</td>
+              <td class="ok">6.3149 %</td>
+              <td class="ok">14.8932 %</td>
+              <td>48</td>
+            </tr>
+            <tr>
+              <td>off-CPU time</td>
+              <td>perf sched timehist, &quot;wait time&quot; column</td>
+              <td class="ok">2.3666 %</td>
+              <td class="ok">10.2646 %</td>
+              <td>48</td>
+            </tr>
+            <tr>
+              <td>wall time</td>
+              <td>CLOCK_MONOTONIC, read independently</td>
+              <td class="ok">0.0049 %</td>
+              <td class="ok">0.0119 %</td>
+              <td>30</td>
+            </tr>
+            <tr>
+              <td>decomposition invariant</td>
+              <td>every recorded sample</td>
+              <td class="ok">0.0000 %</td>
+              <td class="ok">0.0000 %</td>
+              <td>111,362</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout">
+          <div class="callout-title">Why the preempted column is looser</div>
+          <p>
+            The kernel's run-queue delay accumulates continuously, while perf can only
+            measure the wakeup-to-running interval where it captured a
+            <code>sched_wakeup</code> tracepoint. The two are the same quantity under
+            different instrumentation, and the gap between them is a property of perf's
+            tracepoint coverage, not of PACE. The tighter cross-check is the off-CPU row
+            above, where the two methods agree to 1.62&nbsp;%.
+          </p>
+        </div>
+
+        <h3 style="margin-top:36px">Runtime cost</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Configuration</th>
+              <th>Median per sample</th>
+              <th>p99</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Tier 0, no privilege</td>
+              <td class="ok">529 ns</td>
+              <td class="ok">1.19 µs</td>
+            </tr>
+            <tr>
+              <td>Tier 1, hardware counters</td>
+              <td class="ok">2.01 µs</td>
+              <td class="ok">2.09 µs</td>
+            </tr>
+            <tr>
+              <td>With voluntary/involuntary switch counts</td>
+              <td class="warn">5.81 µs</td>
+              <td class="warn">11.77 µs</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          Median and p99 over 5,000 calls. The switch counters are opt-in because the
+          run-queue delay already carries the preemption and blocking split.
+        </p>
+      </section>
+
+      <!-- -------------------------------------------------- integration -->
+      <section id="integration">
+        <div class="section-label">Integration</div>
+        <div class="flow">
+          <div class="flow-row">
+            <div class="flow-icon"><i class="ph ph-download-simple" style="font-size:20px"></i></div>
+            <div>
+              <h3>Link it</h3>
+              <p>
+                A single static or shared library with a stable C ABI. No runtime
+                dependencies beyond the platform's threading library. Ships with a CMake
+                package, a vcpkg port and a Conan recipe.
+              </p>
+            </div>
+          </div>
+          <div class="flow-row">
+            <div class="flow-icon"><i class="ph ph-plugs" style="font-size:20px"></i></div>
+            <div>
+              <h3>Call it where you already sample</h3>
+              <p>
+                One call per sample, on the thread being profiled. No allocation on the hot
+                path, no background thread, no IPC, no trace buffer.
+              </p>
+            </div>
+          </div>
+          <div class="flow-row">
+            <div class="flow-icon"><i class="ph ph-arrows-clockwise" style="font-size:20px"></i></div>
+            <div>
+              <h3>Take the numbers as they are</h3>
+              <p>
+                The sample is a plain struct: wall time, on-CPU, preempted, blocked,
+                cycle counts, switch counts, and the tier they came from. Feed it into your
+                own model, your own UI, your own export format.
+              </p>
+            </div>
+          </div>
+          <div class="flow-row">
+            <div class="flow-icon"><i class="ph ph-chart-line-up" style="font-size:20px"></i></div>
+            <div>
+              <h3>Or write a trace and use the analyzer</h3>
+              <p>
+                The optional JSONL writer emits Chrome Trace Event records, so a
+                vendor's existing viewer can already open the file. The open-source
+                analyzer adds the attribution report on top.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top:28px">
+          <div class="panel">
+            <h3><i class="ph ph-brackets-curly"></i> The whole C API</h3>
+            <pre><code>{`pace_config cfg;
+pace_config_init(&cfg);
+
+pace_session *session;
+pace_session_create(&cfg, &session);
+
+pace_thread *thread;
+pace_session_register_thread(session, &thread);
+
+pace_sample sample;
+pace_session_sample(session, thread, &sample);
+
+// sample.on_cpu_ns
+// sample.preempted_ns
+// sample.blocked_ns
+// sample.wall_ns
+// sample.source`}</code></pre>
+          </div>
+          <div class="panel">
+            <h3><i class="ph ph-cpu"></i> What it does not do</h3>
+            <p>
+              PACE is not a profiler. It does not unwind stacks, symbolise frames, sample
+              memory, or attribute GPU time. Those are your product. What PACE supplies is
+              the time attribution your profiler currently has to guess at.
+            </p>
+            <p>
+              It also does not pretend. Where a platform cannot make a distinction — the
+              Windows and macOS tiers cannot separate preemption from blocking without
+              privilege — PACE reports that the distinction is unavailable rather than
+              reporting a confident zero. The same rule governs the SDK, the analyzer
+              and the report.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ------------------------------------------------------ licensing -->
+      <section id="licence">
+        <div class="section-label">Licence</div>
+        <div class="grid-2">
+          <div class="panel">
+            <h3><i class="ph ph-certificate"></i> Evaluation licence</h3>
+            <p>
+              A paid evaluation licence gives you the library, the benchmark suite, the
+              accuracy report, and the right to run the benchmark against your own
+              workload and publish the result to your own evaluation.
+            </p>
+            <p>
+              Production use in a shipped product requires a commercial licence. The
+              source is visible to licensees under the Business Source License, so you
+              can audit what you are linking.
+            </p>
+          </div>
+          <div class="panel">
+            <h3><i class="ph ph-shield-check"></i> Who this is for</h3>
+            <p>
+              Vendors whose product already reports per-thread time and whose customers
+              ask why a frame is slow: game-engine and graphics profiling tools, real-time
+              and embedded toolchains, application performance monitoring platforms, and
+              semiconductor development tool suites.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ------------------------------------------------------- contact -->
+      <section id="contact">
+        <div class="section-label">Next step</div>
+        <h2>Evaluate it against your own workload</h2>
+        <p class="lede">
+          The benchmark suite and the accuracy harness are the evaluation. Run them
+          against a build that already has a frame-time problem and see whether the
+          attribution points somewhere you did not expect.
+        </p>
+        <div class="cta-row">
+          <a class="btn primary" href="mailto:pace@devansh0703.dev?subject=PACE%20evaluation%20licence">
+            <i class="ph ph-envelope-simple"></i>
+            pace@devansh0703.dev
+          </a>
+          <a class="btn" href="https://github.com/devansh0703/pace-analyzer">
+            <i class="ph ph-github-logo"></i>
+            The open-source analyzer
+          </a>
+        </div>
+      </section>
+    </div>
+
+    <footer class="footer wrap">
+      <span>PACE — preemption-aware time attribution</span>
+      <span>
+        <a href="https://github.com/devansh0703/pace-sdk">pace-sdk</a> ·
+        <a href="https://github.com/devansh0703/pace-analyzer">pace-analyzer</a> ·
+        <a href="https://perfetto.dev/docs/trace-event-format">Trace format</a>
+      </span>
+    </footer>
+  </body>
+</html>
