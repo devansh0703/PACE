@@ -713,6 +713,41 @@ static pace_status pace_linux_thread_read(pace_session *session, pace_thread *th
   }
   lt->start_time_check_countdown--;
 
+  /* THE ORDER OF THESE READS IS THE MEASUREMENT.
+   *
+   * The tier's counter, the wall clock and the thread's CPU clock are
+   * all cumulative, and a sample is the difference between two reads of
+   * each. So the three differences cover three windows, and the windows
+   * have to be the SAME window -- otherwise the preemption is measured
+   * over one interval and the wall over another, and the two do not
+   * reconcile.
+   *
+   * The counter is read FIRST and the two clocks immediately after it,
+   * so the three windows coincide to within the cost of a map lookup.
+   *
+   * Reading the clocks first and the counter last was the other way
+   * round, and it lost 80 % of the preemption on a CI runner. The
+   * counter is a map lookup and the /proc reads between the two are
+   * slow, so the thread was PREEMPTED during the sample: the counter's
+   * jump landed in the previous window's delta, whose wall window was
+   * short, and the clamp that keeps the decomposition exact cut it. The
+   * baseline then moved on, so the time was never recovered.
+   *
+   * The clamp is right and the order was wrong. */
+  uint64_t bpf_preempted_ns = 0;
+  int preempted_from_bpf = 0;
+  uint64_t bpf_kernel_tid = 0;
+#if defined(PACE_WITH_BPF)
+  if (session->bpf_available) {
+    bpf_kernel_tid =
+        pace_linux_resolve_kernel_tid(lt, thread->thread_id, (struct pace_bpf *)session->bpf);
+    if (pace_bpf_read_preempted_ns((struct pace_bpf *)session->bpf, bpf_kernel_tid,
+                                   &bpf_preempted_ns) == PACE_OK) {
+      preempted_from_bpf = 1;
+    }
+  }
+#endif
+
   uint64_t wall_now = pace_now_monotonic_ns();
   uint64_t on_cpu_now = pace_now_thread_cpu_ns();
 
@@ -743,8 +778,7 @@ static pace_status pace_linux_thread_read(pace_session *session, pace_thread *th
    * the sched_wakeup and sched_switch tracepoints rather than inferred from
    * a cumulative counter. */
   if (session->bpf_available) {
-    uint64_t kernel_tid =
-        pace_linux_resolve_kernel_tid(lt, thread->thread_id, (struct pace_bpf *)session->bpf);
+    uint64_t kernel_tid = bpf_kernel_tid;
     uint64_t bpf_preempt = 0, bpf_block = 0, bpf_wakeup = 0;
     if (kernel_tid &&
         pace_bpf_read_thread((struct pace_bpf *)session->bpf, kernel_tid, &bpf_wakeup,
@@ -775,26 +809,6 @@ static pace_status pace_linux_thread_read(pace_session *session, pace_thread *th
      * was and was not preempted, and every flicker would be read as a
      * change of source, which re-takes the baseline and degrades the
      * sample. */
-    uint64_t bpf_preempted_ns = 0;
-    if (pace_bpf_read_preempted_ns((struct pace_bpf *)session->bpf, kernel_tid,
-                                   &bpf_preempted_ns) == PACE_OK) {
-      /* The tier's counter starts at zero when the program loads, so its
-       * difference from the thread's first sample is the whole window's
-       * preemption. There is no need to switch sources, and switching
-       * was losing the accumulated time: the re-baseline at the switch
-       * took the tier's CURRENT value, which already included the
-       * thread's first preemption, and the differences from then on
-       * covered only the time after it.
-       *
-       * Measured on a CI runner: the thread was measured as preempted
-       * for 0.38 s when the tier's counter said 1.78 s.
-       *
-       * Before the thread's first switch-in the tier's value is zero,
-       * and zero is correct: the thread has not been scheduled, so it
-       * has not been preempted. */
-      out_raw->run_delay_ns = bpf_preempted_ns;
-      out_raw->preempted_from_bpf = 1;
-    }
   }
 #endif
 
@@ -820,7 +834,16 @@ static pace_status pace_linux_thread_read(pace_session *session, pace_thread *th
    *
    * The two agree to within a percent on some kernels and differ by 80 %
    * on others, so which one is in the sample matters. */
-  if (!out_raw->preempted_from_bpf) {
+  /* The tier's counter is the run-queue delay when the tier supplied it,
+   * and the kernel's counter otherwise.
+   *
+   * The two agree to within a percent on some kernels and differ by 80 %
+   * on others, so which one is in the sample matters, and the flag says
+   * which. */
+  if (preempted_from_bpf) {
+    out_raw->run_delay_ns = bpf_preempted_ns;
+    out_raw->preempted_from_bpf = 1;
+  } else {
     out_raw->run_delay_ns = run_delay_ns;
   }
   out_raw->involuntary_switches = involuntary;
