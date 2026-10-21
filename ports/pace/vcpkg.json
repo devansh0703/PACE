@@ -1,6 +1,6 @@
 {
   "name": "pace",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Preemption-Aware Time Attribution Engine: per-thread on-CPU, preempted and blocked time for developer-tool vendors",
   "homepage": "https://github.com/devansh0703/PACE",
   "documentation": "https://github.com/devansh0703/PACE/blob/main/pace-sdk/docs/INTEGRATION.md",
