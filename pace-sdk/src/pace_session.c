@@ -365,10 +365,46 @@ static pace_status pace_fill_sample(pace_session *session, pace_thread *thread,
     thread->base_kernel_run_delay_ns = raw->run_delay_ns;
     thread->base_preempted_from_bpf = raw->preempted_from_bpf;
 
-    memset(out_sample, 0, sizeof *out_sample);
-    out_sample->struct_size = (uint32_t)sizeof *out_sample;
+    /* The sample is NOT emptied. Its window is the whole time since the
+     * thread's first sample -- the wall and on-CPU baselines are not
+     * reset -- so it can carry the frozen contribution, which belongs to
+     * the pre-switch window, together with the tier's difference for the
+     * post-switch window.
+     *
+     * Carrying it in the NEXT sample instead would truncate it: that
+     * sample's window is only the post-switch part, and the clamp
+     * would cut the frozen contribution down to it.
+     *
+     * The sample is still degraded, because its window spans a change of
+     * source, but its values are the window's. */
+    uint64_t switch_wall = raw->wall_ns - thread->base_wall_ns;
+    uint64_t switch_on_cpu = raw->on_cpu_ns - thread->base_on_cpu_ns;
+    uint64_t switch_run_delay = raw->run_delay_ns - thread->base_run_delay_ns;
+    /* The frozen contribution is carried by THIS sample, so it is
+     * cleared here rather than by the next one. */
+    switch_run_delay += thread->frozen_preempted_ns;
+    thread->frozen_preempted_ns = 0;
+
+    int64_t signed_wall = (int64_t)switch_wall;
+    int64_t signed_on_cpu = (int64_t)switch_on_cpu;
+    int64_t signed_run_delay = (int64_t)switch_run_delay;
+    if (signed_on_cpu < 0) signed_on_cpu = 0;
+    if (signed_run_delay < 0) signed_run_delay = 0;
+    if (signed_on_cpu > signed_wall) signed_on_cpu = signed_wall;
+    if (signed_run_delay > signed_wall - signed_on_cpu) {
+      signed_run_delay = signed_wall - signed_on_cpu;
+    }
+
+    out_sample->wall_ns = switch_wall;
+    out_sample->on_cpu_ns = (uint64_t)signed_on_cpu;
+    out_sample->preempted_ns = (uint64_t)signed_run_delay;
+    out_sample->blocked_ns =
+        (uint64_t)(signed_wall - signed_on_cpu - signed_run_delay);
     out_sample->source = session->source;
     out_sample->flags |= PACE_SAMPLE_F_DEGRADED;
+    if (raw->preempted_from_bpf) {
+      out_sample->flags |= PACE_SAMPLE_F_PREEMPTED_FROM_EVENTS;
+    }
     __atomic_fetch_add(&session->samples_taken, 1, __ATOMIC_RELAXED);
     __atomic_fetch_add(&session->degraded_samples, 1, __ATOMIC_RELAXED);
     return PACE_OK;
@@ -378,9 +414,9 @@ static pace_status pace_fill_sample(pace_session *session, pace_thread *thread,
   uint64_t on_cpu = raw->on_cpu_ns - thread->base_on_cpu_ns;
   uint64_t run_delay = raw->run_delay_ns - thread->base_run_delay_ns;
 
-  /* The frozen contribution is the preemption measured by the source
-   * that was in use before the current one, over the window during
-   * which it was in use. The windows are disjoint, so the two add. */
+  /* The frozen contribution was carried by the sample that observed the
+   * change of source, which has the window that belongs to it. It is
+   * zero here, because it has already been counted once. */
   run_delay += thread->frozen_preempted_ns;
 
   /* The three underlying reads (CLOCK_THREAD_CPUTIME_ID, /proc/<tid>/schedstat
