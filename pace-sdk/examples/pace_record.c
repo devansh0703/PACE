@@ -47,6 +47,8 @@ static volatile int g_samples_from_counter = 0;
  * the tier's own cumulative for the same thread. */
 #define PACE_TRACKED_THREADS 64
 static uint64_t g_trace_preempted[PACE_TRACKED_THREADS];
+static uint64_t g_trace_wall[PACE_TRACKED_THREADS];
+static uint64_t g_trace_on_cpu[PACE_TRACKED_THREADS];
 static uint64_t g_trace_tids[PACE_TRACKED_THREADS];
 
 static void *worker_main(void *arg) {
@@ -82,11 +84,15 @@ static void *worker_main(void *arg) {
     for (int i = 0; i < PACE_TRACKED_THREADS; i++) {
       if (g_trace_tids[i] == w->tid) {
         g_trace_preempted[i] += sample.preempted_ns;
+        g_trace_wall[i] += sample.wall_ns;
+        g_trace_on_cpu[i] += sample.on_cpu_ns;
         break;
       }
       if (g_trace_tids[i] == 0) {
         g_trace_tids[i] = w->tid;
         g_trace_preempted[i] = sample.preempted_ns;
+        g_trace_wall[i] = sample.wall_ns;
+        g_trace_on_cpu[i] = sample.on_cpu_ns;
         break;
       }
     }
@@ -173,6 +179,30 @@ int main(int argc, char **argv) {
               "  the trace's preempted total: %" PRIu64 " ns against the tier's %" PRIu64
               " ns\n",
               trace_total, total);
+
+      /* The on-CPU time against the wall time.
+       *
+       * The ratio is the fraction of the wall time the threads spent
+       * running. It is also the test of the two clocks: the on-CPU time
+       * comes from the thread CPU clock and the wall time from the
+       * monotonic clock, and if they disagree the off-CPU time is
+       * misstated -- and the preemption, which is clamped to the
+       * off-CPU time, is clamped down with it.
+       *
+       * With W workers on C CPUs the ratio is C/W, so 48 workers on 4
+       * CPUs gives 0.083 and 48 on 16 gives 0.33. */
+      uint64_t wall_total = 0, on_cpu_total = 0;
+      for (int i = 0; i < PACE_TRACKED_THREADS; i++) {
+        if (g_trace_tids[i] == 0) continue;
+        wall_total += g_trace_wall[i];
+        on_cpu_total += g_trace_on_cpu[i];
+      }
+      if (wall_total > 0) {
+        fprintf(stderr,
+                "  the on-CPU time is %.3f of the wall time (%" PRIu64 " ns of %" PRIu64
+                " ns)\n",
+                (double)on_cpu_total / (double)wall_total, on_cpu_total, wall_total);
+      }
     }
   }
 #endif
