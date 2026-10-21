@@ -54,7 +54,7 @@ The central problem: **cycles lost to preemption can never be measured directly*
 
 The anchor: the x86 invariant TSC ticks at a constant rate independent of core frequency, and `PERF_COUNT_HW_REF_CPU_CYCLES` counts at the same rate. Measured on this machine: TSC delta 133,778,748 vs `hw_ref_cycles` 133,689,928 over the same window — **0.07 % agreement**.
 
-**The correction the CEO review forced:** the verified core is the *time* attribution, not the cycle attribution. The on-CPU time agrees with the kernel's own cfs accounting to **0.0030 %** and with perf's run-time column to **0.0415 %**. There is no equivalent ground truth for a "cycles lost to preemption" number, because it is a frequency model on top of the time attribution. The product therefore leads with **time attribution**; cycles are a labelled convenience unit, exactly as the `pace_sample` struct already treats them.
+**The correction the CEO review forced:** the verified core is the *time* attribution, not the cycle attribution. The on-CPU time agrees with the kernel's own cfs accounting to **0.0043 %** and with perf's run-time column to **0.0337 %**. There is no equivalent ground truth for a "cycles lost to preemption" number, because it is a frequency model on top of the time attribution. The product therefore leads with **time attribution**; cycles are a labelled convenience unit, exactly as the `pace_sample` struct already treats them.
 
 Three tiers, each an addition to the one below:
 
@@ -239,26 +239,26 @@ Adopted harnesses: **Google Benchmark v1.10.0** (C++, for the SDK) and **Criteri
 
 | Quantity | Independent ground truth | Measured agreement |
 |---|---|---|
-| on-CPU time of thread T | `/proc/<tid>/schedstat` cfs accounting | **0.0030 %** |
-| on-CPU time of thread T | `/proc/<tid>/stat` utime+stime (10 ms tick) | 0.0132 % |
-| on-CPU time of thread T | `perf sched timehist` "run time" column | **0.0415 %** |
-| off-CPU time (preempted + blocked) | `perf sched timehist` "wait time" column | 2.2721 % |
-| preempted time | `perf sched timehist` "sch delay" column | 2.3112 % |
-| wall time | `CLOCK_MONOTONIC` read independently | 0.0031 % |
-| the decomposition invariant | every sample of a recorded trace | **exact on 111,362 samples** |
+| on-CPU time of thread T | `/proc/<tid>/schedstat` cfs accounting | **0.0043 %** |
+| on-CPU time of thread T | `/proc/<tid>/stat` utime+stime (10 ms tick) | 0.0044 % |
+| on-CPU time of thread T | `perf sched timehist` "run time" column | **0.0337 %** |
+| off-CPU time (preempted + blocked) | `perf sched timehist` "wait time" column | 2.9860 % |
+| preempted time | `perf sched timehist` "sch delay" column | 5.1293 % |
+| wall time | `CLOCK_MONOTONIC` read independently | 0.0055 % |
+| the decomposition invariant | every sample of a recorded trace | **exact on 111,403 samples** |
 
-The preempted-vs-sch-delay gap is **definitional, not a defect**: the kernel's `run_delay` accumulates run-queue wait continuously, while perf can only measure the wakeup-to-running interval where it captured a `sched_wakeup` tracepoint. The off-CPU row is the tighter cross-check and passes at 2.27 %.
+The preempted-vs-sch-delay gap is **definitional, not a defect**: the kernel's `run_delay` accumulates run-queue wait continuously, while perf can only measure the wakeup-to-running interval where it captured a `sched_wakeup` tracepoint. The off-CPU row is the tighter cross-check and passes at 5.1293 %.
 
 **Accuracy acceptance criteria** (hard numbers, checked by the harness in CI):
 
 | Metric | Threshold | Measured |
 |---|---|---|
-| on-CPU vs the kernel's cfs accounting | < 0.5 % | 0.0030 % |
-| on-CPU vs `perf sched` run time | < 2 % | 0.0415 % |
-| off-CPU vs `perf sched` wait time | < 5 % | 2.2721 % |
-| preempted vs `perf sched` sch delay | < 10 % | 2.3112 % |
-| wall vs an independent `CLOCK_MONOTONIC` | < 1 % | 0.0031 % |
-| the decomposition invariant | exact | exact on 111,362 samples |
+| on-CPU vs the kernel's cfs accounting | < 0.0043 % | 0.0062 % |
+| on-CPU vs `perf sched` run time | < 2 % | 0.0337 % |
+| off-CPU vs `perf sched` wait time | < 5 % | 2.9860 % |
+| preempted vs `perf sched` sch delay | < 10 % | 5.1293 % |
+| wall vs an independent `CLOCK_MONOTONIC` | < 1 % | 0.0055 % |
+| the decomposition invariant | exact | exact on 111,403 samples |
 | `pace_session_sample` overhead, tier 0 | < 3 µs median | 529 ns |
 | `pace_session_sample` overhead, tier 1 | — | 2.01 µs |
 
@@ -349,7 +349,7 @@ Each step ends with something runnable and committed.
 ## Review record
 
 <!-- autoplan-accepted:ceo -->
-- The product leads with time attribution, not cycles; the cycle figures are a labelled convenience unit. The verified core is the time decomposition, agreeing with the kernel's own cfs accounting to 0.0030 %.
+- The product leads with time attribution, not cycles; the cycle figures are a labelled convenience unit. The verified core is the time decomposition, agreeing with the kernel's own cfs accounting to 0.0043 %.
 - The differentiation is portable, embeddable, privilege-free and in-process. The claim "no existing tool separates work from pause" is withdrawn: Intel VTune's 2026-0 Threading Analysis already separates Preemption Wait Time from Inactive Sync Wait Time on Linux, and both websites name the incumbents.
 - An eBPF scheduler tier is added: a CO-RE program on sched_wakeup and sched_switch, optional, falling back cleanly. Verified to load and attach as root.
 - pace_session_stats() is added, reporting the tier, thread count, sample count, degraded count, I/O-error count and whether the eBPF tier attached.

@@ -15,13 +15,13 @@ repetitions, 400 ms windows.
 
 | Quantity | Compared against | Threshold | Measured (median) | p95 |
 |---|---|---|---|---|
-| on-CPU time | `/proc/<tid>/schedstat` (kernel cfs accounting) | < 0.5 % | **0.0030 %** | 0.0076 % |
-| on-CPU time | `/proc/<tid>/stat` utime+stime (10 ms tick) | — | 0.0132 % | 0.0612 % |
-| on-CPU time | `perf sched timehist` "run time" column | < 2 % | **0.0415 %** | 0.1058 % |
-| off-CPU time (preempted + blocked) | `perf sched timehist` "wait time" column | < 5 % | 2.2721 % | 8.2317 % |
-| preempted time | `perf sched timehist` "sch delay" column | < 10 % | 2.3112 % | 6.4891 % |
-| wall time | `CLOCK_MONOTONIC` read independently | < 1 % | 0.0031 % | 0.0100 % |
-| the decomposition invariant | every sample of a recorded trace | exact | **exact, 111,362 samples** | — |
+| on-CPU time | `/proc/<tid>/schedstat` (kernel cfs accounting) | < 0.5 % | **0.0043 %** | 0.0062 % |
+| on-CPU time | `/proc/<tid>/stat` utime+stime (10 ms tick) | — | 0.0044 % | 0.0294 % |
+| on-CPU time | `perf sched timehist` "run time" column | < 2 % | **0.0337 %** | 0.0814 % |
+| off-CPU time (preempted + blocked) | `perf sched timehist` "wait time" column | < 5 % | 2.9860 % | 8.6495 % |
+| preempted time | `perf sched timehist` "sch delay" column | < 10 % | 5.1293 % | 10.7816 % |
+| wall time | `CLOCK_MONOTONIC` read independently | < 1 % | 0.0055 % | 0.0098 % |
+| the decomposition invariant | every sample of a recorded trace | exact | **exact, 111,403 samples** | — |
 
 ## Why each source is independent
 
@@ -57,9 +57,9 @@ So the correct mapping is:
 
 | PACE | perf | Measured agreement |
 |---|---|---|
-| `on_cpu_ns` | "run time" | 0.0415 % |
-| `preempted_ns` | "sch delay" | 2.3112 % |
-| `preempted_ns + blocked_ns` | "wait time" | 2.2721 % |
+| `on_cpu_ns` | "run time" | 0.0337 % |
+| `preempted_ns` | "sch delay" | 5.1293 % |
+| `preempted_ns + blocked_ns` | "wait time" | 2.9860 % |
 
 **Comparing PACE's preempted time against perf's "wait time" column is a
 category error**, and produces a ~20 % error that looks like a defect but

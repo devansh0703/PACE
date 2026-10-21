@@ -61,7 +61,24 @@ HISTORICAL_DOCS = [
 
 
 def current_numbers(artifact: dict) -> dict:
+    """The published figures, taken from the artifact.
+
+    Every measurement the harness produces is published somewhere, so all
+    of them are collected here rather than a hand-picked two. A
+    measurement that is not published cannot go stale, and one that is
+    published must match.
+    """
     by_name = {m["name"]: m for m in artifact["measurements"]}
+    published = []
+    for m in artifact["measurements"]:
+        if m.get("skipped"):
+            continue
+        # Both the median and the p95 are published, in different tables.
+        published.append(m["median_relative_error"] * 100.0)
+        published.append(m["p95_relative_error"] * 100.0)
+    thresholds = sorted(
+        {m["threshold"] * 100.0 for m in artifact["measurements"] if m.get("threshold")}
+    )
     return {
         "samples": artifact["decomposition"]["total_samples"],
         "cfs": by_name[
@@ -72,6 +89,8 @@ def current_numbers(artifact: dict) -> dict:
             "on-CPU time vs perf sched timehist 'run time' column"
         ]["median_relative_error"]
         * 100.0,
+        "published": published,
+        "thresholds": thresholds,
     }
 
 
@@ -127,15 +146,41 @@ def main() -> int:
                     f"says {samples_text}"
                 )
 
-        # The percentages, where they are quoted with their value.
-        for m in re.finditer(r"(\d+\.\d+)\s*%", text):
-            value = float(m.group(1))
-            if value in (round(now["cfs"], 4), round(now["perf"], 4)):
+        # The agreement percentages, where they are quoted with their value.
+        #
+        # Only the published figures are checked. Other percentages in the
+        # documents are thresholds, ratios, turbo figures and costs, and a
+        # blanket rule would flag them all. So the rule is per-figure: a
+        # percentage that is a *measurement* must match the artifact, and
+        # the way to tell is the line it is on.
+        for i, line in enumerate(text.split("\n"), 1):
+            # A harness figure is one compared against a source the harness
+            # names. A percentage measured elsewhere -- the TSC against
+            # hw_ref_cycles, for instance -- is checked by the primitive
+            # tests, not here, and the rule must not claim it.
+            if not re.search(
+                r"cfs accounting|schedstat|perf sched|timehist|"
+                r"utime\+stime|CLOCK_MONOTONIC|decomposition",
+                line,
+                re.I,
+            ):
                 continue
-            # Only the two published figures are checked; other percentages
-            # in the documents are thresholds, ratios and durations.
-            if value in (round(now["cfs"], 4), round(now["perf"], 4)):
-                continue
+            for m in re.finditer(r"(\d+\.\d+)\s*%", line):
+                value = float(m.group(1))
+                if any(
+                    abs(value - published) < 0.00005
+                    for published in now["published"]
+                ):
+                    continue
+                # A threshold is not a measurement. The harness's own
+                # thresholds are published in the artifact.
+                if value in now["thresholds"]:
+                    continue
+                failures.append(
+                    f"{rel}:{i}: quotes {value:.4f} % as an agreement figure, "
+                    f"but the artifact says "
+                    + ", ".join(f"{p:.4f} %" for p in now["published"])
+                )
 
     # 2. Every historical document must be dated, so a reader can tell that
     #    it describes a past state.

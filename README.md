@@ -70,11 +70,11 @@ method in [pace-sdk/docs/ACCURACY.md](pace-sdk/docs/ACCURACY.md).
 
 | Quantity | Against | Agreement |
 |---|---|---|
-| on-CPU time | the kernel's own CFS accounting | 0.0030 % |
-| on-CPU time | `perf sched timehist` "run time" | 0.0415 % |
-| off-CPU time | `perf sched timehist` "wait time" | 2.27 % |
-| preempted time | `perf sched timehist` "sch delay" | 2.31 % |
-| the decomposition invariant | 111,362 real samples | **exact** |
+| on-CPU time | the kernel's own CFS accounting | 0.0043 % |
+| on-CPU time | `perf sched timehist` "run time" | 0.0337 % |
+| off-CPU time | `perf sched timehist` "wait time" | 2.9860 % |
+| preempted time | `perf sched timehist` "sch delay" | 5.1293 % |
+| the decomposition invariant | 111,403 real samples | **exact** |
 
 ## Cost
 

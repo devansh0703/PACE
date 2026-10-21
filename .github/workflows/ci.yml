@@ -219,6 +219,16 @@ jobs:
           # job above has just regenerated.
           python3 scripts/check_doc_numbers.py
 
+      - name: Check that the documents' generator leaves them unchanged
+        run: |
+          # The generator rewrites the documents' figures from the
+          # artifact. If running it changes anything, the documents and
+          # the artifact disagree, and the check above says so too. This
+          # is the same drift caught from the other side.
+          python3 scripts/update_doc_numbers.py
+          git diff --exit-code -- README.md PLAN.md pace-sdk/README.md \
+            pace-sdk/docs/ACCURACY.md pace-sdk/docs/PREMISE-VERIFICATION.md
+
       - name: Publish the result artifact
         if: always()
         uses: actions/upload-artifact@v4
