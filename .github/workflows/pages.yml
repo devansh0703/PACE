@@ -66,33 +66,40 @@ jobs:
         run: |
           python3 scripts/check_site_accuracy.py
 
-      # Both sites land in one gh-pages branch. A project Pages site is
-      # served from /<repo>/, so the published tree has a PACE/
-      # directory at its root: the SDK's site at /PACE/ and the
-      # analyzer's site at /PACE/analyzer/, which are the bases their
-      # astro configs set.
+      # Both sites land in one gh-pages branch.
+      #
+      # The artifact's root IS the site root: GitHub Pages serves a
+      # project site from /<repo>/, so the tree published here is served
+      # from /PACE/ without a PACE/ directory of its own. A directory of
+      # that name would be served from /PACE/PACE/.
+      #
+      # So the SDK's site is at the root of the artifact and the
+      # analyzer's site is under analyzer/, which is the base its astro
+      # config sets.
       - name: Assemble the site
         run: |
           rm -rf _site
-          mkdir -p _site/PACE/analyzer
-          cp -r websites/pace-sdk/dist/. _site/PACE/
-          cp -r websites/pace-analyzer/dist/. _site/PACE/analyzer/
+          mkdir -p _site/analyzer
+          cp -r websites/pace-sdk/dist/. _site/
+          cp -r websites/pace-analyzer/dist/. _site/analyzer/
           echo "the published tree:"
-          find _site -maxdepth 3 -name "index.html" | sort
+          find _site -maxdepth 2 -name "index.html" | sort
 
       - name: Check that both pages use their own base path
         run: |
-          # A page whose assets are referenced from the root would 404 on
-          # the deployed site, because the site is served from /PACE/.
-          if grep -qE '(src|href)="/_astro/' _site/PACE/index.html; then
-            echo "::error::the SDK's page references the root base path"
+          # A page whose assets are referenced from the domain root would
+          # 404 on the deployed site, because the site is served from
+          # /PACE/.
+          if grep -qE '(src|href)="/_astro/' _site/index.html; then
+            echo "::error::the SDK's page references the domain root"
             exit 1
           fi
-          if grep -qE '(src|href)="/_astro/' _site/PACE/analyzer/index.html; then
-            echo "::error::the analyzer's page references the root base path"
+          if grep -qE '(src|href)="/_astro/' _site/analyzer/index.html; then
+            echo "::error::the analyzer's page references the domain root"
             exit 1
           fi
-          grep -q '/PACE/analyzer/_astro/' _site/PACE/analyzer/index.html
+          grep -q '/PACE/_astro/' _site/index.html
+          grep -q '/PACE/analyzer/_astro/' _site/analyzer/index.html
           echo "both pages use their own base path"
 
       - uses: actions/configure-pages@v5
