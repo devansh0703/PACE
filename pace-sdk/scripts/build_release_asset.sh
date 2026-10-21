@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
 # Build the release asset and print the hash the vcpkg port must record.
 #
-# The port's SHA512 describes this tarball, and the portfile lives in the
-# source tree, so the port's own files are excluded from the asset. Without
-# that exclusion, publishing a corrected hash would change the tarball it
-# describes, and the port would be broken for every installer.
+# The port's SHA512 describes this tarball. The port lives in ports/pace/,
+# OUTSIDE the asset's tree, so the asset does not contain the hash that
+# describes it -- publishing a corrected hash does not change the asset.
+#
+# The asset is built from the TAG's tree with a fixed modification time
+# and a sorted file list, so it is byte-reproducible. `git archive`
+# embeds the commit id in the tar header, so an archive of the commit
+# would change whenever anything was committed -- including the commit
+# that records the hash.
 #
 # Usage:
-#   scripts/build_release_asset.sh <version>
+#   pace-sdk/scripts/build_release_asset.sh <version>
 #
 # Prints the SHA512 on the last line, and writes the tarball to
-# dist/pace-sdk-<version>.tar.gz.
+# pace-sdk/dist/pace-sdk-<version>.tar.gz.
 
 set -euo pipefail
 
@@ -37,12 +42,9 @@ DIST="$ROOT/dist"
 mkdir -p "$DIST"
 ASSET="$DIST/pace-sdk-${VERSION}.tar.gz"
 
-# The port's own files are excluded, and so is anything the build would
-# not need.
-# The port's own files are excluded: the portfile holds the hash of this
-# tarball, so including it would make the tarball depend on its own
-# hash. The build script is excluded for the same reason: it is part of
-# the release machinery, not of the library.
+# The build directory holds the tagged tree, and dist/ is excluded
+# because it holds the asset itself: including it would make the asset
+# contain a copy of itself.
 #
 # The archive is built from the tag's TREE rather than the commit, with
 # a fixed modification time and a sorted file list. `git archive` embeds
@@ -56,8 +58,7 @@ trap 'rm -rf "$BUILD_DIR"' EXIT
 
 git archive --format=tar "$TAG" \
   'pace-sdk' \
-  ':!pace-sdk/vcpkg' ':!pace-sdk/vcpkg.json' \
-  ':!pace-sdk/dist' ':!pace-sdk/scripts' \
+  ':!pace-sdk/dist' \
   | tar -x -C "$BUILD_DIR"
 
 # A fixed timestamp for every file, and a sorted list, so the archive is
@@ -79,5 +80,5 @@ echo "asset : $ASSET"
 echo "size  : $SIZE bytes"
 echo "sha512: $SHA"
 echo ""
-echo "record this in vcpkg/portfile.cmake as PACE_SHA512:"
+echo "record this in ports/pace/portfile.cmake as PACE_SHA512:"
 echo "  set(PACE_SHA512 $SHA)"

@@ -628,8 +628,7 @@ def main() -> int:
         # and the gate that matters is the one against the kernel's own
         # counter.
         summarise(
-            "the trace's preempted total vs the tier's own cumulative "
-            "(reported, not gated)",
+            "the trace's preempted total vs the tier's own cumulative",
             "fraction of the tier's cumulative",
             tier_ratio_errors,
             0.05,

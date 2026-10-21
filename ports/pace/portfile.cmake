@@ -1,36 +1,37 @@
-# The version this port builds. vcpkg_from_github's REF must match it, and
-# a mismatch means the port is building something other than what it says.
+# The vcpkg port for PACE.
+#
+# PACE is the SDK: a C library that attributes a thread's elapsed time
+# into on-CPU, preempted and blocked time. The analyzer is a separate
+# product and is not part of this port.
+#
+# The source is the release ASSET, not GitHub's auto-generated archive.
+#
+# The asset is built with `git archive` over the tagged tree, with fixed
+# file times and a sorted file list, so it is byte-reproducible. That
+# matters because this file records the asset's SHA512: if the asset
+# changed whenever anything was committed, then recording a corrected
+# hash would change the asset the hash describes.
+#
+# The port's own files live outside the asset's tree (the asset holds
+# only pace-sdk/), so publishing a corrected hash does not change the
+# asset.
 if(NOT DEFINED VERSION OR NOT VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
   message(FATAL_ERROR "the pace port needs a VERSION")
 endif()
 
-# The source is the release ASSET, not GitHub's auto-generated archive.
-#
-# The asset is built with `git archive --prefix=pace-sdk-<version>/`, which
-# is reproducible and does not contain this portfile. That is what breaks
-# the circular dependency: the port's hash describes a tarball that does
-# not change when the portfile changes. GitHub's own archive honours
-# .gitattributes but is not byte-reproducible, so a hash of it would break
-# as soon as the port is corrected.
 set(PACE_SOURCE_URL
   "https://github.com/devansh0703/PACE/releases/download/v${VERSION}/pace-sdk-${VERSION}.tar.gz")
 
 # The SHA512 of that asset.
-set(PACE_SHA512 253ee0eb34e0b8805dc263b3f12ac280c140302e437685a2494c412b07b81344225b6d6bc4ada75f32b5bd80f6c61a154cdccbda54950541cef4e02bf49ebfb6)
+set(PACE_SHA512 PACE_SHA512_PLACEHOLDER)
 
 vcpkg_download_distfile(ARCHIVE
   URLS "${PACE_SOURCE_URL}"
   FILENAME "pace-sdk-${VERSION}.tar.gz"
   SHA512 ${PACE_SHA512})
 
-# vcpkg stores a downloaded file under a mangled name when the filename
-# is long: "pace-sdk-0.1.0.tar.gz" became
-# "pace-sdk-0-31395e7d.1.0.tar.gz", with the hash inserted and the name
-# truncated. The file is in the downloads directory, and vcpkg_download_
-# distfile sets ARCHIVE to the path it used, so that is the path to
-# extract from.
 # vcpkg_extract_source_archive strips the archive's top-level directory,
-# so the extracted source is already at the root.
+# so the extracted source is already at the root of SOURCE_PATH.
 vcpkg_extract_source_archive(SOURCE_PATH
   ARCHIVE "${ARCHIVE}"
 )
@@ -39,20 +40,14 @@ if(NOT EXISTS "${SOURCE_PATH}/CMakeLists.txt")
   message(FATAL_ERROR "the extracted asset has no CMakeLists.txt at ${SOURCE_PATH}")
 endif()
 
-# The release asset is built with:
-#
-#   git archive --format=tar --prefix=pace-sdk-<version>/ v<version> \
-#     ':!vcpkg' ':!vcpkg.json'
-#
-# The port's own files are excluded from the asset, so the hash the port
-# records describes a tarball that does not change when the portfile
-# changes. Without that, publishing a corrected hash would change the
-# tarball it describes.
+if(NOT EXISTS "${SOURCE_PATH}/LICENSE")
+  message(FATAL_ERROR "the extracted asset has no LICENSE at ${SOURCE_PATH}")
+endif()
 
 # The eBPF tier is off unless the port is asked for the "ebpf" feature.
 # It needs libbpf, whose static link against libelf does not resolve
-# reliably in vcpkg, and it is an addition rather than a requirement: the
-# tier-0 and tier-1 measurements need none of it.
+# reliably in vcpkg, and it is an addition rather than a requirement:
+# the tier-0 and tier-1 measurements need none of it.
 set(PACE_EBPF_OPTION OFF)
 if("ebpf" IN_LIST FEATURES)
   set(PACE_EBPF_OPTION ON)
