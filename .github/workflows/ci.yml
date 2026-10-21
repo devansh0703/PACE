@@ -234,3 +234,11 @@ jobs:
       - name: Check the sites against the design contract
         working-directory: websites
         run: python3 scripts/check_design_contract.py
+
+      - name: Check that the site's accuracy table matches the artifact
+        working-directory: websites
+        run: |
+          # The numbers on the site must come from the measurement harness.
+          # A hand-typed copy is a number that drifts, and a drifted number
+          # on a product site is a lie nobody notices.
+          python3 scripts/check_site_accuracy.py
