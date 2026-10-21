@@ -1,0 +1,109 @@
+PACE thread attribution
+======================
+
+samples: 106023 across 48 threads   decomposition: exact
+
+thread           on_cpu    preempted      blocked preempt%   switches  core cycles
+----------------------------------------------------------------------------------
+3164905       654.75 ms       1.22 s    131.12 ms    60.8%          0            -
+3164906       673.13 ms       1.18 s    150.41 ms    58.9%          0            -
+3164924       674.24 ms       1.20 s    130.77 ms    59.8%          0            -
+3164910       711.72 ms       1.14 s    152.42 ms    56.9%          0            -
+3164929       664.56 ms       1.24 s    102.27 ms    61.7%          0            -
+3164919       600.35 ms       1.28 s    124.04 ms    63.8%          0            -
+3164908       666.83 ms       1.21 s    121.50 ms    60.6%          0            -
+3164940       658.27 ms       1.21 s    134.22 ms    60.4%          0            -
+3164909       606.72 ms       1.28 s    117.54 ms    63.8%          0            -
+3164941       628.02 ms       1.24 s    130.91 ms    62.1%          0            -
+3164946       663.89 ms       1.21 s    132.17 ms    60.2%          0            -
+3164943       674.37 ms       1.20 s    131.36 ms    59.8%          0            -
+3164947       614.46 ms       1.28 s    110.88 ms    63.7%          0            -
+3164942       600.93 ms       1.28 s    124.37 ms    63.7%          0            -
+3164916       647.97 ms       1.24 s    108.88 ms    62.2%          0            -
+3164920       648.81 ms       1.19 s    160.21 ms    59.6%          0            -
+3164912       627.62 ms       1.23 s    143.85 ms    61.4%          0            -
+3164932       644.03 ms       1.20 s    152.23 ms    60.2%          0            -
+3164926       660.27 ms       1.20 s    133.78 ms    60.3%          0            -
+3164921       719.63 ms       1.13 s    147.45 ms    56.6%          0            -
+3164938       674.11 ms       1.21 s    117.08 ms    60.4%          0            -
+3164904       676.17 ms       1.17 s    148.25 ms    58.7%          0            -
+3164917       641.71 ms       1.22 s    132.78 ms    61.2%          0            -
+3164948       666.22 ms       1.18 s    154.70 ms    58.9%          0            -
+3164907       678.11 ms       1.19 s    126.99 ms    59.7%          0            -
+3164939       622.76 ms       1.26 s    113.91 ms    63.1%          0            -
+3164944       650.98 ms       1.21 s    133.07 ms    60.7%          0            -
+3164923       637.28 ms       1.25 s    102.25 ms    62.9%          0            -
+3164918       634.62 ms       1.24 s    120.77 ms    62.1%          0            -
+3164922       670.91 ms       1.19 s    124.75 ms    60.0%          0            -
+3164911       653.11 ms       1.19 s    143.99 ms    59.9%          0            -
+3164927       595.39 ms       1.27 s    115.97 ms    64.2%          0            -
+3164913       637.82 ms       1.25 s     92.90 ms    63.2%          0            -
+3164925       687.35 ms       1.15 s    141.42 ms    58.2%          0            -
+3164914       665.57 ms       1.20 s    114.06 ms    60.7%          0            -
+3164928       628.31 ms       1.22 s    127.54 ms    61.8%          0            -
+3164930       652.99 ms       1.19 s    134.44 ms    60.1%          0            -
+3164931       642.36 ms       1.19 s    140.63 ms    60.3%          0            -
+3164933       602.67 ms       1.26 s    104.62 ms    64.0%          0            -
+3164934       640.93 ms       1.22 s    102.86 ms    62.1%          0            -
+3164915       664.19 ms       1.16 s    141.42 ms    58.9%          0            -
+3164936       613.16 ms       1.20 s    142.20 ms    61.4%          0            -
+3164935       618.57 ms       1.19 s    148.81 ms    60.8%          0            -
+3164951       607.03 ms       1.22 s    131.19 ms    62.2%          0            -
+3164937       648.05 ms       1.17 s    137.15 ms    59.8%          0            -
+3164945       587.94 ms       1.23 s    133.46 ms    63.0%          0            -
+3164949       654.68 ms       1.15 s    143.42 ms    59.0%          0            -
+3164950       653.42 ms       1.10 s    196.18 ms    56.4%          0            -
+----------------------------------------------------------------------------------
+TOTAL           31.05 s      58.04 s       6.31 s    60.8%
+
+findings
+--------
+[critical] thread 3164927 lost 64.2% of its wall time to preemption
+[critical] thread 3164933 lost 64.0% of its wall time to preemption
+[critical] thread 3164919 lost 63.8% of its wall time to preemption
+[critical] thread 3164909 lost 63.8% of its wall time to preemption
+[critical] thread 3164947 lost 63.7% of its wall time to preemption
+[critical] thread 3164942 lost 63.7% of its wall time to preemption
+[critical] thread 3164913 lost 63.2% of its wall time to preemption
+[critical] thread 3164939 lost 63.1% of its wall time to preemption
+[critical] thread 3164945 lost 63.0% of its wall time to preemption
+[critical] thread 3164923 lost 62.9% of its wall time to preemption
+[critical] thread 3164951 lost 62.2% of its wall time to preemption
+[critical] thread 3164916 lost 62.2% of its wall time to preemption
+[critical] thread 3164941 lost 62.1% of its wall time to preemption
+[critical] thread 3164918 lost 62.1% of its wall time to preemption
+[critical] thread 3164934 lost 62.1% of its wall time to preemption
+[critical] thread 3164928 lost 61.8% of its wall time to preemption
+[critical] thread 3164929 lost 61.7% of its wall time to preemption
+[critical] thread 3164912 lost 61.4% of its wall time to preemption
+[critical] thread 3164936 lost 61.4% of its wall time to preemption
+[critical] thread 3164917 lost 61.2% of its wall time to preemption
+[critical] the run lost 60.8% of its total wall time to preemption
+[critical] thread 3164905 lost 60.8% of its wall time to preemption
+[critical] thread 3164935 lost 60.8% of its wall time to preemption
+[critical] thread 3164944 lost 60.7% of its wall time to preemption
+[critical] thread 3164914 lost 60.7% of its wall time to preemption
+[critical] thread 3164908 lost 60.6% of its wall time to preemption
+[critical] thread 3164940 lost 60.4% of its wall time to preemption
+[critical] thread 3164938 lost 60.4% of its wall time to preemption
+[critical] thread 3164931 lost 60.3% of its wall time to preemption
+[critical] thread 3164926 lost 60.3% of its wall time to preemption
+[critical] thread 3164946 lost 60.2% of its wall time to preemption
+[critical] thread 3164932 lost 60.2% of its wall time to preemption
+[critical] thread 3164930 lost 60.1% of its wall time to preemption
+[critical] thread 3164922 lost 60.0% of its wall time to preemption
+[critical] thread 3164911 lost 59.9% of its wall time to preemption
+[critical] thread 3164924 lost 59.8% of its wall time to preemption
+[critical] thread 3164937 lost 59.8% of its wall time to preemption
+[critical] thread 3164943 lost 59.8% of its wall time to preemption
+[critical] thread 3164907 lost 59.7% of its wall time to preemption
+[critical] thread 3164920 lost 59.6% of its wall time to preemption
+[critical] thread 3164949 lost 59.0% of its wall time to preemption
+[critical] thread 3164915 lost 58.9% of its wall time to preemption
+[critical] thread 3164906 lost 58.9% of its wall time to preemption
+[critical] thread 3164948 lost 58.9% of its wall time to preemption
+[critical] thread 3164904 lost 58.7% of its wall time to preemption
+[critical] thread 3164925 lost 58.2% of its wall time to preemption
+[critical] thread 3164910 lost 56.9% of its wall time to preemption
+[critical] thread 3164921 lost 56.6% of its wall time to preemption
+[critical] thread 3164950 lost 56.4% of its wall time to preemption
