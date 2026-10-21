@@ -16,7 +16,7 @@ set(PACE_SOURCE_URL
   "https://github.com/devansh0703/PACE/releases/download/v${VERSION}/pace-sdk-${VERSION}.tar.gz")
 
 # The SHA512 of that asset.
-set(PACE_SHA512 9952a131dbc57e56fd84de0877953a99456df953c03ea8255da228e64926ceec234846041e381f7448641e0659ee82c77a674cdb7fea3f5e95a1df9958a25693)
+set(PACE_SHA512 253ee0eb34e0b8805dc263b3f12ac280c140302e437685a2494c412b07b81344225b6d6bc4ada75f32b5bd80f6c61a154cdccbda54950541cef4e02bf49ebfb6)
 
 vcpkg_download_distfile(ARCHIVE
   URLS "${PACE_SOURCE_URL}"
