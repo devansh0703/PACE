@@ -307,6 +307,8 @@ static pace_status pace_fill_sample(pace_session *session, pace_thread *thread,
     thread->base_wall_ns = raw->wall_ns;
     thread->base_on_cpu_ns = raw->on_cpu_ns;
     thread->base_run_delay_ns = raw->run_delay_ns;
+    thread->base_kernel_run_delay_ns = raw->run_delay_ns;
+    thread->frozen_preempted_ns = 0;
     thread->base_involuntary = raw->involuntary_switches;
     thread->base_voluntary = raw->voluntary_switches;
     thread->base_core_cycles = raw->core_cycles;
@@ -333,10 +335,35 @@ static pace_status pace_fill_sample(pace_session *session, pace_thread *thread,
    * degraded, because it spans the change and is therefore not a
    * measurement of either window. */
   if (raw->preempted_from_bpf != thread->base_preempted_from_bpf) {
+    /* The source changes when the tier's map recognises the thread, and
+     * the two counters measure the same phenomenon over DISJOINT
+     * windows: the kernel's counter was the source until now, and the
+     * tier's is the source from now on.
+     *
+     * So the kernel's contribution is FROZEN at its value now, rather
+     * than dropped, and the two are added.
+     *
+     * Without the freeze, the time before the tier's map recognised the
+     * thread was lost, and on a CI runner that was 1.16 s of every
+     * thread's 1.81 s of preemption: the thread was measured as
+     * preempted for 0.65 s when it was really preempted for 1.81 s.
+     *
+     * The sample itself is still degraded, because it spans the change
+     * and is therefore not a measurement of either window alone. */
+    if (thread->base_preempted_from_bpf == 0) {
+      /* The kernel's counter was the source, so its contribution is the
+       * difference from the kernel's baseline. */
+      uint64_t kernel_delta = raw->run_delay_ns - thread->base_kernel_run_delay_ns;
+      thread->frozen_preempted_ns += kernel_delta;
+    } else {
+      /* The tier was the source, and now the kernel's is. */
+      uint64_t tier_delta = raw->run_delay_ns - thread->base_run_delay_ns;
+      thread->frozen_preempted_ns += tier_delta;
+    }
+
     thread->base_run_delay_ns = raw->run_delay_ns;
+    thread->base_kernel_run_delay_ns = raw->run_delay_ns;
     thread->base_preempted_from_bpf = raw->preempted_from_bpf;
-    thread->base_wall_ns = raw->wall_ns;
-    thread->base_on_cpu_ns = raw->on_cpu_ns;
 
     memset(out_sample, 0, sizeof *out_sample);
     out_sample->struct_size = (uint32_t)sizeof *out_sample;
@@ -350,6 +377,11 @@ static pace_status pace_fill_sample(pace_session *session, pace_thread *thread,
   uint64_t wall = raw->wall_ns - thread->base_wall_ns;
   uint64_t on_cpu = raw->on_cpu_ns - thread->base_on_cpu_ns;
   uint64_t run_delay = raw->run_delay_ns - thread->base_run_delay_ns;
+
+  /* The frozen contribution is the preemption measured by the source
+   * that was in use before the current one, over the window during
+   * which it was in use. The windows are disjoint, so the two add. */
+  run_delay += thread->frozen_preempted_ns;
 
   /* The three underlying reads (CLOCK_THREAD_CPUTIME_ID, /proc/<tid>/schedstat
    * and the wall clock) are not atomic, so the raw difference can be off by a
