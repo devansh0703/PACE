@@ -432,9 +432,21 @@ def main() -> int:
             # two, by an amount that grows with the contention. A
             # negative difference -- perf larger than PACE -- would mean
             # PACE under-reports, and that is the direction that fails.
+            # If PACE carried no attribution, the kernel was not
+            # collecting the scheduler statistics, so its preemption is
+            # legitimately zero: the split is unavailable, not measured.
+            # Comparing that against perf's real number would be
+            # comparing a measurement with an absence, so the check is
+            # skipped with the reason stated.
+            pace_has_attribution = any(
+                pace_preempted.get(tid, 0.0) > 0 or pace_blocked.get(tid, 0.0) > 0
+                for tid in pace_preempted
+            )
             for tid, truth in perf_schdelay.items():
                 measured = pace_preempted.get(tid)
                 if measured is None or truth <= 0:
+                    continue
+                if not pace_has_attribution:
                     continue
                 perf_preempted_errors.append((measured - truth) / truth)
             for tid, truth in perf_runtime.items():

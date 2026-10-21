@@ -259,6 +259,58 @@ static int pace_open_schedstat(uint64_t tid) {
 }
 
 /**
+ * True when the kernel is counting the scheduler statistics that
+ * /proc/<tid>/schedstat reports.
+ *
+ * The kernel's own sched_info_on() decides this:
+ *
+ *   - with CONFIG_SCHEDSTATS compiled in, the statistics are always
+ *     collected, and /proc/sys/kernel/sched_schedstats exists;
+ *   - with only CONFIG_TASK_DELAY_ACCT, the statistics are collected
+ *     only while /proc/sys/kernel/task_delayacct is 1, and that toggle
+ *     is OFF by default;
+ *   - with neither, the file reads "0 0 0" and always has.
+ *
+ * So on a distribution kernel, which compiles in CONFIG_TASK_DELAY_ACCT
+ * without CONFIG_SCHEDSTATS, the run-queue delay reads zero until
+ * somebody turns the toggle on. Measured on a CI runner: the
+ * file read "0 0 0" and the preemption was reported as zero on a
+ * machine where the threads were preempted constantly.
+ *
+ * Zero preemption is a measurement, and it is a false one. So the
+ * statistics being off is detected, and the split is reported as
+ * unavailable rather than as zero.
+ */
+static int pace_schedstat_available(void) {
+  static int cached = -1;
+  if (cached >= 0) return cached;
+
+  /* CONFIG_SCHEDSTATS compiled in: the statistics are always collected,
+   * whatever the toggle says. */
+  if (access("/proc/sys/kernel/sched_schedstats", F_OK) == 0) {
+    cached = 1;
+    return cached;
+  }
+
+  /* Only the delayacct fallback: the toggle decides, and it is off by
+   * default. */
+  if (access("/proc/sys/kernel/task_delayacct", F_OK) == 0) {
+    int value = 0;
+    FILE *f = fopen("/proc/sys/kernel/task_delayacct", "r");
+    if (f) {
+      if (fscanf(f, "%d", &value) != 1) value = 0;
+      fclose(f);
+    }
+    cached = value == 1;
+    return cached;
+  }
+
+  /* Neither: the counters are not collected at all. */
+  cached = 0;
+  return cached;
+}
+
+/**
  * Read /proc/<tid>/schedstat: "<on_cpu_ns> <run_delay_ns> <timeslices>".
  *
  * The file is a single short line, so a plain read into a stack buffer is
@@ -484,8 +536,11 @@ static pace_status pace_linux_thread_read(pace_session *session, pace_thread *th
   }
 
   /* Linux reports the run-queue delay directly, so the preemption and
-   * blocking split is a real measurement on this platform. */
-  out_raw->has_split = 1;
+   * blocking split is a real measurement on this platform -- as long as
+   * the kernel is collecting the scheduler statistics. On a kernel with
+   * them off, /proc/<tid>/schedstat reads "0 0 0" and the split is
+   * unavailable rather than zero. */
+  out_raw->has_split = pace_schedstat_available();
 
   uint64_t voluntary = 0, involuntary = 0;
   if (session->config.collect_switch_counters) {

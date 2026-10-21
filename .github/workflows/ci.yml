@@ -215,6 +215,27 @@ jobs:
             -DPACE_BUILD_BENCH=OFF -DPACE_ENABLE_BPF=ON
           cmake --build build -j 4
 
+      - name: Turn on the kernel's scheduler statistics
+        run: |
+          # The kernel collects the run-queue delay only while the
+          # scheduler statistics are on. A distribution kernel compiles
+          # in CONFIG_TASK_DELAY_ACCT without CONFIG_SCHEDSTATS, and the
+          # delayacct toggle is off by default, so
+          # /proc/<tid>/schedstat reads "0 0 0" and the preemption is
+          # reported as zero on a machine where the threads are
+          # preempted constantly.
+          #
+          # With them on, the measurement is available and the check
+          # against perf is meaningful.
+          if [ -w /proc/sys/kernel/task_delayacct ]; then
+            echo 1 > /proc/sys/kernel/task_delayacct
+            echo "the scheduler statistics are now on"
+          elif [ -e /proc/sys/kernel/sched_schedstats ]; then
+            echo "CONFIG_SCHEDSTATS is compiled in; the statistics are always on"
+          else
+            echo "::warning::this kernel does not collect the scheduler statistics, so the preemption split is unavailable and the check against perf will be skipped"
+          fi
+
       - name: Run the accuracy harness
         working-directory: pace-sdk
         run: |

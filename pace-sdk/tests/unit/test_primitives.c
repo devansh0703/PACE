@@ -342,6 +342,65 @@ static void test_the_two_reference_cycle_conversions_agree(void) {
         "the TSC advanced %.4f times the expected number of ticks", ratio);
 }
 
+/**
+ * The sample claims the preemption split only when the kernel is
+ * collecting the scheduler statistics.
+ *
+ * On a distribution kernel, which compiles in CONFIG_TASK_DELAY_ACCT
+ * without CONFIG_SCHEDSTATS, the run-queue delay is only counted while
+ * /proc/sys/kernel/task_delayacct is 1, and that toggle is off by
+ * default. The schedstat file then reads "0 0 0", and a preemption of
+ * zero would be a false measurement: the thread was preempted, the
+ * kernel just was not counting it.
+ *
+ * So the flags and the kernel's own accounting must agree.
+ */
+static void test_the_split_is_claimed_only_when_the_kernel_collects_it(void) {
+  /* The kernel's own rule, from sched_info_on():
+   *   CONFIG_SCHEDSTATS compiled in -> the statistics are always
+   *     collected, and /proc/sys/kernel/sched_schedstats exists;
+   *   only CONFIG_TASK_DELAY_ACCT -> the toggle decides, and it is off
+   *     by default;
+   *   neither -> not collected at all. */
+  int schedstats_compiled_in = access("/proc/sys/kernel/sched_schedstats", F_OK) == 0;
+  int delayacct_on = 0;
+  if (!schedstats_compiled_in) {
+    FILE *f = fopen("/proc/sys/kernel/task_delayacct", "r");
+    if (f) {
+      if (fscanf(f, "%d", &delayacct_on) != 1) delayacct_on = 0;
+      fclose(f);
+    }
+  }
+  int kernel_collects = schedstats_compiled_in || delayacct_on == 1;
+
+  pace_config cfg;
+  pace_config_init(&cfg);
+  pace_session *session = NULL;
+  CHECK(pace_session_create(&cfg, &session) == PACE_OK, "the session was created");
+  pace_thread *thread = NULL;
+  CHECK(pace_session_register_thread(session, &thread) == PACE_OK, "registered");
+
+  pace_sample sample;
+  CHECK(pace_session_sample(session, thread, &sample) == PACE_OK, "sampled");
+  pace_session_sample(session, thread, &sample);
+
+  if (kernel_collects) {
+    CHECK((sample.flags & PACE_SAMPLE_F_HAS_PREEMPTED) != 0,
+          "the kernel collects the statistics, so the split must be claimed");
+    CHECK((sample.flags & PACE_SAMPLE_F_HAS_BLOCKED) != 0,
+          "the kernel collects the statistics, so the split must be claimed");
+  } else {
+    CHECK((sample.flags & PACE_SAMPLE_F_HAS_PREEMPTED) == 0,
+          "the kernel does not collect the statistics, so the split must not "
+          "be claimed: a preemption of zero would be a false measurement");
+    CHECK((sample.flags & PACE_SAMPLE_F_HAS_BLOCKED) == 0,
+          "the kernel does not collect the statistics, so the split must not "
+          "be claimed");
+  }
+
+  pace_session_destroy(session);
+}
+
 int main(void) {
   printf("PACE backend: %s\n", pace_backend_name());
 
@@ -360,6 +419,7 @@ int main(void) {
   test_the_switch_counters_are_read_correctly();
   test_the_sdk_reads_the_same_switch_counters();
   test_the_run_queue_delay_is_not_the_on_cpu_time();
+  test_the_split_is_claimed_only_when_the_kernel_collects_it();
 #endif
 
   printf("%d checks, %d failures\n", checks, failures);
