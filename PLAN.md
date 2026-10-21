@@ -370,7 +370,14 @@ Each step ends with something runnable and committed.
 <!-- /autoplan-accepted:dx -->
 
 <!-- autoplan-accepted:eng -->
-- None yet: the eng phase has not run.
+- A thread handle could be used with a different session, which wrote one session's baselines into the other's thread state. Now rejected with PACE_ERR_INVALID_ARG.
+- The thread-local fast path dereferenced a handle whose session had been destroyed. The session now carries a unique id and the fast path validates by id, so a stale handle is recognised without touching freed memory.
+- The kernel recycles a thread id after the thread holding it exits, and the new thread inherited the dead thread's handle and baselines. The handle now records its owning pthread_t, and registration reclaims the slot.
+- pace_session_stats now rejects a struct_size this build cannot fill, instead of accepting any smaller size and returning zeroes.
+- The CI could not have run: the three products are separate repositories, so each job now checks out the repository it needs into a subdirectory and runs there.
+- The cached /proc/<tid>/schedstat descriptor is re-opened when the thread's start time changes, amortised over 1000 samples so the check does not dominate the sample.
+- The analyzer's parsers stay hand-written: a regex over untrusted trace files carries catastrophic backtracking.
+- The Windows and macOS backends remain the next wave, not a ship blocker. An absent backend fails loudly at pace_session_create; a wrong one would produce a plausible-looking number.
 <!-- /autoplan-accepted:eng -->
 
 ### AUTONOMOUS DECISION LOG
