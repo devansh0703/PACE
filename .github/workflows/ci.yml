@@ -437,15 +437,18 @@ jobs:
           version="$(python3 -c 'import json,sys; print(json.load(open("vcpkg.json"))["version"])')"
           echo "the port installs v$version"
 
-      - name: Clone vcpkg
-        working-directory: "$RUNNER_TEMP"
+      - name: Clone and bootstrap vcpkg
         run: |
+          cd "$RUNNER_TEMP"
           git clone --depth 1 https://github.com/microsoft/vcpkg.git
+          # The repository holds no binary: the tool is built by the
+          # bootstrap script, which downloads the release build.
+          ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
           ./vcpkg/vcpkg version
 
       - name: Install the port from the published release
-        working-directory: "$RUNNER_TEMP"
         run: |
+          cd "$RUNNER_TEMP"
           # The port is an overlay directory: the port directory, not the
           # repository root. A consumer adds the repository this way.
           ./vcpkg/vcpkg install pace \
@@ -453,8 +456,9 @@ jobs:
             --x-install-root="$RUNNER_TEMP/installed"
 
       - name: Build and run a consumer against the installed package
-        working-directory: "$RUNNER_TEMP"
         run: |
+          cd "$RUNNER_TEMP"
+
           # The package's CMake config has to be findable and the library
           # has to link, or the port is installed but not usable.
           cat > CMakeLists.txt <<'EOF'
