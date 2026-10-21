@@ -116,14 +116,19 @@ jobs:
         shell: bash
         working-directory: pace-sdk
         run: |
-          cat > consumer.cmake <<'EOF'
+          # The check runs in the runner's temp directory, not in the
+          # source tree: a consumer project written into the SDK's
+          # directory would pollute the source, and the build directory
+          # it creates would not be covered by .gitignore.
+          CHECK_DIR="$(mktemp -d)"
+          cat > "$CHECK_DIR/CMakeLists.txt" <<'EOF'
           cmake_minimum_required(VERSION 3.24)
           project(pace_install_check LANGUAGES C)
           find_package(pace REQUIRED)
           add_executable(check main.c)
           target_link_libraries(check PRIVATE pace::pace)
           EOF
-          cat > main.c <<'EOF'
+          cat > "$CHECK_DIR/main.c" <<'EOF'
           #include <pace/pace.h>
           #include <stdio.h>
           int main(void) {
@@ -138,10 +143,10 @@ jobs:
             return 0;
           }
           EOF
-          cmake -S . -B check-build -G Ninja \
+          cmake -S "$CHECK_DIR" -B "$CHECK_DIR/build" -G Ninja \
             -DCMAKE_PREFIX_PATH="${{ github.workspace }}/install"
-          cmake --build check-build
-          ./check-build/check
+          cmake --build "$CHECK_DIR/build"
+          "$CHECK_DIR/build/check"
 
   # ------------------------------------------------------------- the analyzer
   analyzer:

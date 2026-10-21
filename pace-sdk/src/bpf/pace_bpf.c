@@ -46,9 +46,15 @@ const char *pace_bpf_unavailable_reason(int reason) {
  * expects them. */
 static int pace_bpf_diag_print(enum libbpf_print_level level, const char *fmt,
                                va_list args) {
-  /* The debug level is noise, and the warning level says what went wrong
-   * in a form a developer can act on. */
-  if (level == LIBBPF_DEBUG) return 0;
+  /* Only the warnings are shown. The debug level is noise, and the info
+   * level says things like "failed to bump RLIMIT_MEMLOCK", which is
+   * true of every unprivileged process and says nothing about whether
+   * the tier works.
+   *
+   * The tier is optional and the SDK reports its state through
+   * pace_stats, so a consumer that did not ask for the tier does not
+   * need libbpf's commentary. */
+  if (level < LIBBPF_WARN) return 0;
   return vfprintf(stderr, fmt, args);
 }
 
