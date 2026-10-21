@@ -206,7 +206,39 @@ jobs:
       - name: Install the dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm libbpf-dev linux-tools-generic
+          sudo apt-get install -y \
+            clang llvm libbpf-dev libelf-dev zlib1g-dev pkg-config \
+            build-essential git linux-tools-generic
+
+      - name: Build bpftool
+        run: |
+          # The runner's /usr/sbin/bpftool is the linux-tools WRAPPER, which
+          # resolves the versioned binary under /usr/lib/linux-tools/ for
+          # the RUNNING kernel. The runner's kernel is 6.17.0-xxxx-azure
+          # and no matching package is installed, so the wrapper exits
+          # non-zero and the eBPF tier is disabled.
+          #
+          # The tier has to be enabled here, because this job is where the
+          # measurement that exposed the kernel counter's undercount was
+          # taken. So a bpftool that runs is needed, and it must not
+          # depend on the runner's kernel version -- that changes weekly.
+          #
+          # So it is built from the upstream source. The runner already
+          # has clang, llvm, libelf-dev and zlib1g-dev, and the build
+          # takes about a minute.
+          #
+          # The clone needs the libbpf submodule: bpftool's standalone
+          # build compiles libbpf from the tree beside it, and without the
+          # submodule the build stops at "No rule to make target
+          # libbpf/src/hashmap.h".
+          #
+          # The tag is the kernel version the tool tracks, so v7.8.1 is
+          # the current one.
+          git clone --depth 1 --recurse-submodules --branch v7.8.1 \
+            https://github.com/libbpf/bpftool.git "$RUNNER_TEMP/bpftool"
+          make -C "$RUNNER_TEMP/bpftool/src" -j 4
+          sudo install -m 0755 "$RUNNER_TEMP/bpftool/src/bpftool" /usr/local/bin/bpftool
+          bpftool version
 
       - name: Build the SDK
         working-directory: pace-sdk

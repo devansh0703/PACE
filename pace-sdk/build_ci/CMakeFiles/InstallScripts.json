@@ -1,0 +1,9 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/devansh/kernel_suite/pace-sdk/build_ci/cmake_install.cmake",
+		"/home/devansh/kernel_suite/pace-sdk/build_ci/src/bpf/cmake_install.cmake",
+		"/home/devansh/kernel_suite/pace-sdk/build_ci/examples/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
