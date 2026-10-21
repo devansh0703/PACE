@@ -139,9 +139,15 @@ int main(void) {
     if (pthread_create(&threads[i], NULL, worker, NULL) == 0) started++;
   }
   sleep(2);
-  g_stop = 1;
-  for (int i = 0; i < started; i++) pthread_join(threads[i], NULL);
 
+  /* The counters are read WHILE the workers are still running.
+   *
+   * A thread's /proc/<pid>/task/<tid> directory disappears when the
+   * thread exits, so reading after the join compares only the main
+   * thread -- which was never contended, and whose numbers say nothing
+   * about the measurement. That is not a detail: it is how the check
+   * came to compare one un-contended thread on a CI runner and report
+   * a 20 ms run_delay as though it were the measurement. */
   /* The thread id is the name of the directory under /proc/self/task, so
    * the directory is enumerated rather than indexed. A pthread_t is not a
    * thread id, and the TIDs are not a dense range either. */
@@ -173,6 +179,9 @@ int main(void) {
   }
   closedir(dir);
 
+  g_stop = 1;
+  for (int i = 0; i < started; i++) pthread_join(threads[i], NULL);
+
   printf("%ld threads compared\n", compared);
   printf("  the kernel's total run_delay: %.0f ns\n", kd_total);
   printf("  the eBPF tier's total:         %.0f ns\n", bpf_total);
@@ -180,7 +189,7 @@ int main(void) {
     printf("  the eBPF measurement is %+.2f %% of the kernel's counter\n",
            (bpf_total - kd_total) / kd_total * 100.0);
   }
-  CHECK(compared > 0, "the threads were compared");
+  CHECK(compared > 1, "the workers were compared, not just the main thread");
   CHECK(bpf_total > 0.0, "the eBPF tier measured some preemption");
 
   /* What the tier observed. The state counts say whether a preempted
