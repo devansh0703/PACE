@@ -1,5 +1,6 @@
 # DX review — PACE
 
+Written 2026-10-21 against the command line as a user met it that day.
 Independent DX engineer review of the PACE implementation, run as the
 gstack `dx` phase against the code and the command line as a user meets
 them.

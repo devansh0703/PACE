@@ -1,5 +1,6 @@
 # Design review — PACE
 
+Written 2026-10-21 against the sites as they were built that day.
 Independent senior product-designer review of the PACE product sites and
 the analyzer's report output, run as the gstack `design` phase against what
 is actually rendered, not against what the plan says should be.

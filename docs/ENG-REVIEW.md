@@ -1,5 +1,8 @@
 # Engineering review — PACE
 
+Written 2026-10-21 against the implementation as it stood that day. The
+findings it describes are tracked in the status table at the end of the
+CEO review, and the review itself is dated the same way.
 Independent senior-engineer review of the PACE implementation, run as the
 gstack `eng` phase against the code on disk rather than against the plan
 alone.

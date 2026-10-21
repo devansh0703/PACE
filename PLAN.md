@@ -245,7 +245,7 @@ Adopted harnesses: **Google Benchmark v1.10.0** (C++, for the SDK) and **Criteri
 | off-CPU time (preempted + blocked) | `perf sched timehist` "wait time" column | 2.2721 % |
 | preempted time | `perf sched timehist` "sch delay" column | 2.3112 % |
 | wall time | `CLOCK_MONOTONIC` read independently | 0.0031 % |
-| the decomposition invariant | every sample of a recorded trace | **exact on 103,553 samples** |
+| the decomposition invariant | every sample of a recorded trace | **exact on 111,362 samples** |
 
 The preempted-vs-sch-delay gap is **definitional, not a defect**: the kernel's `run_delay` accumulates run-queue wait continuously, while perf can only measure the wakeup-to-running interval where it captured a `sched_wakeup` tracepoint. The off-CPU row is the tighter cross-check and passes at 2.27 %.
 
@@ -258,7 +258,7 @@ The preempted-vs-sch-delay gap is **definitional, not a defect**: the kernel's `
 | off-CPU vs `perf sched` wait time | < 5 % | 2.2721 % |
 | preempted vs `perf sched` sch delay | < 10 % | 2.3112 % |
 | wall vs an independent `CLOCK_MONOTONIC` | < 1 % | 0.0031 % |
-| the decomposition invariant | exact | exact on 103,553 samples |
+| the decomposition invariant | exact | exact on 111,362 samples |
 | `pace_session_sample` overhead, tier 0 | < 3 µs median | 529 ns |
 | `pace_session_sample` overhead, tier 1 | — | 2.01 µs |
 

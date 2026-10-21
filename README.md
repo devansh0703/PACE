@@ -71,7 +71,7 @@ method in [pace-sdk/docs/ACCURACY.md](pace-sdk/docs/ACCURACY.md).
 | on-CPU time | `perf sched timehist` "run time" | 0.0415 % |
 | off-CPU time | `perf sched timehist` "wait time" | 2.27 % |
 | preempted time | `perf sched timehist` "sch delay" | 2.31 % |
-| the decomposition invariant | 103,553 real samples | **exact** |
+| the decomposition invariant | 111,362 real samples | **exact** |
 
 ## Cost
 
