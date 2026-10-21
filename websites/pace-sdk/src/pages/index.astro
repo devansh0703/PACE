@@ -122,6 +122,12 @@ const nav = [
               blocked and marks the split as unavailable rather than reporting a
               confident zero.
             </p>
+            <p>
+              It also depends on the kernel collecting the scheduler statistics. A
+              distribution kernel leaves that off by default, and then the run-queue delay
+              reads zero. PACE detects that and reports the split as unavailable, because
+              a preemption of zero is a measurement and there it would be a false one.
+            </p>
           </div>
         </div>
       </section>
