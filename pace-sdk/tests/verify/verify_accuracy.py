@@ -316,12 +316,20 @@ def main() -> int:
     demo = BUILD / "examples" / "pace_record"
     SCRATCH.mkdir(parents=True, exist_ok=True)
     trace_path = SCRATCH / "verify_trace.jsonl"
-    subprocess.run(
+    demo_run = subprocess.run(
         [str(demo), str(trace_path), "2000", "48"],
         capture_output=True,
         timeout=120,
         check=False,
     )
+    # The demo reports which tier carried the measurement, and that is
+    # not a detail: a tier that fell back to the procfs tier is a
+    # DIFFERENT measurement, and on some kernels the difference is large.
+    # So it is reported rather than swallowed by the capture.
+    tier_report = (demo_run.stderr or b"").decode("utf-8", "replace")
+    for line in tier_report.splitlines():
+        if "eBPF tier" in line:
+            print(f"  the recorded trace: {line.strip()}")
     total_samples = 0
     violating_samples = 0
     balance_errors: list[float] = []
@@ -347,7 +355,7 @@ def main() -> int:
     perf_window_mismatches: list[tuple[int, float, float]] = []
     if env.running_as_root:
         try:
-            subprocess.run(
+            perf_run = subprocess.run(
                 [
                     "perf", "sched", "record", "-o", str(SCRATCH / "sched.data"),
                     "--", str(demo), str(trace_path), "2000", "48",
@@ -356,6 +364,10 @@ def main() -> int:
                 timeout=180,
                 check=False,
             )
+            perf_tier = (perf_run.stderr or b"").decode("utf-8", "replace")
+            for line in perf_tier.splitlines():
+                if "eBPF tier" in line:
+                    print(f"  the perf-wrapped trace: {line.strip()}")
             timehist = subprocess.run(
                 ["perf", "sched", "timehist", "-i", str(SCRATCH / "sched.data")],
                 capture_output=True,
