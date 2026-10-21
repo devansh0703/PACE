@@ -89,11 +89,12 @@ At 1000 samples per second per thread, tier 0 costs 0.05 % of a core.
 ## Installing
 
 ```bash
-# vcpkg
-vcpkg install pace
+# vcpkg -- the port is in this repository, as an overlay directory
+git clone https://github.com/devansh0703/PACE
+vcpkg install pace --overlay-ports=/path/to/PACE/ports
 
 # or Conan
-conan install --requires=pace/0.1.0
+conan install --requires=pace/0.1.2
 ```
 
 Both install from the published release, so the version you get is the
@@ -127,6 +128,7 @@ docs/COMPETITIVE-AND-PRIOR-ART.md
 pace-sdk/                   product 1: the C and C++ library
 pace-analyzer/              product 2: the Rust trace analyzer
 websites/                   the two product sites
+ports/pace/                 the vcpkg port
 ```
 
 They are **one repository**, so the products ship together and the licences

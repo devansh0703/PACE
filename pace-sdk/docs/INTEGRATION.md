@@ -10,17 +10,29 @@ find_package(pace REQUIRED)
 target_link_libraries(my_profiler PRIVATE pace::pace)
 ```
 
-vcpkg:
+vcpkg: the port is in this repository, as an overlay directory.
+
+```sh
+git clone https://github.com/devansh0703/PACE
+vcpkg install pace --overlay-ports=/path/to/PACE/ports
+```
+
+or, in a manifest, with the repository added as an overlay:
 
 ```json
-{ "dependencies": [ "pace" ] }
+{
+  "dependencies": [ "pace" ],
+  "vcpkg-configuration": {
+    "overlay-ports": [ "/path/to/PACE/ports" ]
+  }
+}
 ```
 
 Conan:
 
 ```toml
 [tool.conan.dependencies]
-pace = "0.1.0"
+pace = "0.1.2"
 ```
 
 ## 2. Create a session

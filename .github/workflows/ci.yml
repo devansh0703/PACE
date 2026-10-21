@@ -419,3 +419,78 @@ jobs:
           # A hand-typed copy is a number that drifts, and a drifted number
           # on a product site is a lie nobody notices.
           python3 scripts/check_site_accuracy.py
+
+  vcpkg:
+    name: vcpkg port
+    runs-on: ubuntu-24.04
+
+    # The port installs from the PUBLISHED release, so this job needs the
+    # release to exist. It does not build from the checkout, because that
+    # would not test the thing a consumer actually gets: the published
+    # asset, at the published hash.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the port's version
+        working-directory: ports/pace
+        run: |
+          version="$(python3 -c 'import json,sys; print(json.load(open("vcpkg.json"))["version"])')"
+          echo "the port installs v$version"
+
+      - name: Clone vcpkg
+        working-directory: "$RUNNER_TEMP"
+        run: |
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git
+          ./vcpkg/vcpkg version
+
+      - name: Install the port from the published release
+        working-directory: "$RUNNER_TEMP"
+        run: |
+          # The port is an overlay directory: the port directory, not the
+          # repository root. A consumer adds the repository this way.
+          ./vcpkg/vcpkg install pace \
+            --overlay-ports="$GITHUB_WORKSPACE/ports" \
+            --x-install-root="$RUNNER_TEMP/installed"
+
+      - name: Build and run a consumer against the installed package
+        working-directory: "$RUNNER_TEMP"
+        run: |
+          # The package's CMake config has to be findable and the library
+          # has to link, or the port is installed but not usable.
+          cat > CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.20)
+          project(pace_consumer C)
+          find_package(pace CONFIG REQUIRED)
+          add_executable(consumer consumer.c)
+          target_link_libraries(consumer PRIVATE pace::pace)
+          EOF
+          cat > consumer.c <<'EOF'
+          #include <pace/pace.h>
+          #include <inttypes.h>
+          #include <stdio.h>
+          int main(void) {
+            pace_config cfg;
+            pace_config_init(&cfg);
+            pace_session *session = NULL;
+            if (pace_session_create(&cfg, &session) != PACE_OK) return 1;
+            pace_thread *thread = NULL;
+            if (pace_session_register_thread(session, &thread) != PACE_OK) return 1;
+            pace_sample sample;
+            pace_session_sample(session, thread, &sample);
+            pace_session_sample(session, thread, &sample);
+            uint64_t sum = sample.on_cpu_ns + sample.preempted_ns + sample.blocked_ns;
+            printf("wall %" PRIu64 " ns, on-CPU %" PRIu64 " ns, preempted %" PRIu64
+                   " ns, blocked %" PRIu64 " ns\n",
+                   sample.wall_ns, sample.on_cpu_ns, sample.preempted_ns,
+                   sample.blocked_ns);
+            pace_session_destroy(session);
+            return sum == sample.wall_ns ? 0 : 1;
+          }
+          EOF
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$RUNNER_TEMP/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_MANIFEST_MODE=OFF \
+            -DVCPKG_INSTALLED_DIR="$RUNNER_TEMP/installed/x64-linux" \
+            -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/installed/x64-linux"
+          cmake --build build -j 4
+          ./build/consumer
