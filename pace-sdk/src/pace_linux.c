@@ -620,50 +620,48 @@ static pace_status pace_linux_thread_init(pace_session *session, pace_thread *th
 static uint64_t pace_linux_resolve_kernel_tid(pace_linux_thread *lt, uint64_t tid,
                                                struct pace_bpf *bpf) {
   if (lt->kernel_tid != 0) return lt->kernel_tid;
+  if (!bpf) return 0;
+
+  /* The map's keys ARE the kernel's thread ids, so the map's presence
+   * for a candidate is the proof that the candidate is the kernel's.
+   *
+   * The two candidates are checked in order, and the first one is
+   * FREE:
+   *
+   *   - the namespace's id, which the SDK already has. On a machine
+   *     with one pid namespace -- the overwhelmingly common case -- this
+   *     IS the kernel's id, and the map confirms it in one cheap
+   *     lookup. No /proc read is needed at all.
+   *
+   *   - the resolved id, which needs a /proc read to obtain and is
+   *     therefore checked less often.
+   *
+   * So the confirmation is as prompt as the map can allow, and the
+   * expensive read happens only while the cheap check has not settled
+   * it. That matters: the tier's map gains an entry for a thread when
+   * the thread is switched in with a runnable-since timestamp, and the
+   * confirmation is what turns the tier's measurement on. Confirming
+   * late loses the time before the confirmation, and on a CI runner
+   * that was 1.1 s of every thread's 1.81 s of preemption.
+   *
+   * Measured on a CI runner: the resolution answered wrongly for 16 of
+   * 48 workers, and those workers fell back to the kernel's counter
+   * while the tier claimed to be attached. */
+  if (pace_bpf_has_thread(bpf, tid)) {
+    lt->kernel_tid = tid;
+    return lt->kernel_tid;
+  }
 
   if (lt->kernel_tid_check_countdown > 0) {
     lt->kernel_tid_check_countdown--;
     return 0;
   }
-  /* Every 16 samples until it succeeds: often enough to be quick, rare
-   * enough not to matter, and it stops entirely once it works. */
+  /* Every 16 samples: the /proc read is the expensive part, and it is
+   * only needed when the process has more than one pid namespace. */
   lt->kernel_tid_check_countdown = 15;
 
   uint64_t resolved = pace_kernel_thread_id(tid);
-
-  /* The resolution's answer is VERIFIED against the map, because it
-   * cannot be trusted on its own.
-   *
-   * The NSpid line is filled in from the outermost namespace inwards, so
-   * a partially filled line's last entry is a namespace's id and not the
-   * kernel's. And the map knows the truth: its keys ARE the kernel's
-   * thread ids.
-   *
-   * So the candidates are the resolved id and the namespace's id, and
-   * the one the map recognises is the kernel's. When the map recognises
-   * neither, the thread has not been scheduled since the program
-   * loaded, and the resolution is not yet verifiable -- so it is left
-   * unconfirmed and retried.
-   *
-   * Measured on a CI runner: the resolution answered wrongly for 16 of
-   * 48 workers, and those workers fell back to the kernel's counter
-   * while the tier claimed to be attached. */
-  if (bpf) {
-    if (resolved != 0 && pace_bpf_has_thread(bpf, resolved)) {
-      lt->kernel_tid = resolved;
-      return lt->kernel_tid;
-    }
-    if (pace_bpf_has_thread(bpf, tid)) {
-      /* The namespace's id IS the kernel's id: the process has one
-       * namespace, and the resolution's answer was a namespace's id
-       * rather than the kernel's. */
-      lt->kernel_tid = tid;
-      return lt->kernel_tid;
-    }
-    return 0;
-  }
-
-  if (resolved != 0) {
+  if (resolved != 0 && pace_bpf_has_thread(bpf, resolved)) {
     lt->kernel_tid = resolved;
   }
   return lt->kernel_tid;
