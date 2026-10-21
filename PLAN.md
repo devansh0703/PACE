@@ -366,7 +366,13 @@ Each step ends with something runnable and committed.
 <!-- /autoplan-accepted:design -->
 
 <!-- autoplan-accepted:dx -->
-- None yet: the DX phase has not run.
+- Both products implement the agent-ready error contract: a stable code, an actionable fix, and a recovery line that states whether anything was written. The analyzer's codes are io-error, parse-error, format-unknown, empty-trace, unsupported-output, write-error and invalid-argument.
+- The SDK gains pace_status_fix() and pace_status_recovery(), so a status code says what to do and not only what went wrong.
+- A missing file reports io-error, not format-unknown: a file that cannot be opened is not a format problem.
+- The anyhow dependency is dropped. The typed error type carries the contract, and anyhow only added a doubled prefix to the parse error.
+- The SDK's hello world is four commands from a clean checkout to a running program, and the flow was executed to confirm it.
+- The hosted API reference is deferred: the inline header documentation is complete, and hosting needs a decision about where the site lives.
+- pace verify keeps printing its result to stdout rather than stderr: it is a result, not an error. The exit code is 1, which is what a CI gate reads.
 <!-- /autoplan-accepted:dx -->
 
 <!-- autoplan-accepted:eng -->
