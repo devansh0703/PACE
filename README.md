@@ -98,7 +98,12 @@ cd pace-analyzer && cargo build --release && cargo test --release
 ```
 PLAN.md                     the implementation plan and the decision record
 docs/CEO-REVIEW.md          the independent review that corrected the positioning
+docs/ENG-REVIEW.md          the engineering review
+docs/DX-REVIEW.md           the developer-experience review
+docs/DESIGN-REVIEW.md       the design review
 docs/IDEA-BRIEF.md          the source brief
+docs/OS-PRIMITIVES.md       the OS primitives, and their measured costs
+docs/DEPENDENCY-ADOPTION.md what is adopted, and why
 docs/COMPETITIVE-AND-PRIOR-ART.md
 pace-sdk/                   product 1, its own repository
 pace-analyzer/              product 2, its own repository
