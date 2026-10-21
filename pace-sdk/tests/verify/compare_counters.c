@@ -173,11 +173,20 @@ int main(void) {
     if (kernel_tid == 0) kernel_tid = tid;
     if (pace_bpf_read_preempted_ns(bpf, kernel_tid, &tier) != PACE_OK) continue;
 
+    /* Which of the two candidate ids the map recognises. The map's
+     * presence for a candidate is the proof that the candidate is the
+     * kernel's thread id, and the resolved one is not always right: the
+     * NSpid line is filled in from the outermost namespace inwards, so a
+     * partially filled line's last entry is a namespace's id and not the
+     * kernel's. */
+    uint64_t by_namespace = 0;
+    pace_bpf_read_preempted_ns(bpf, tid, &by_namespace);
     if (compared < 8) {
-      printf("  thread %-8s the kernel's run_delay %12" PRIu64
-             " ns   the eBPF measurement %12" PRIu64 " ns\n",
-             entry->d_name, kernel, tier);
+      printf("  thread %-8s the namespace id %12" PRIu64 " -> the map has %12" PRIu64
+             "   the resolved id %12" PRIu64 " -> the map has %12" PRIu64 "\n",
+             entry->d_name, tid, by_namespace, kernel_tid, tier);
     }
+
     kd_total += (double)kernel;
     bpf_total += (double)tier;
     compared++;

@@ -71,6 +71,20 @@ pace_status pace_bpf_read_preempted_ns(struct pace_bpf *bpf, uint64_t tid,
                                         uint64_t *preempted_ns);
 
 /**
+ * Whether the tier's map has an entry for a thread.
+ *
+ * The map's keys are the kernel's thread ids, so the map's presence for
+ * a candidate is the proof that the candidate is the kernel's id. That
+ * is how a thread's kernel id is VERIFIED rather than assumed: the
+ * resolution's answer is checked against the map, and if the map does
+ * not recognise it, the other candidate is tried.
+ *
+ * The count of the map's entries is also the number of threads the
+ * program has seen, which is what a diagnostic needs.
+ */
+int pace_bpf_has_thread(struct pace_bpf *bpf, uint64_t tid);
+
+/**
  * Read a diagnostic counter from the tier's maps.
  *
  * The tier records how many switch-outs it saw with each prev_state, and

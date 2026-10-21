@@ -125,6 +125,16 @@ uint64_t pace_current_thread_id(void);
  */
 uint64_t pace_kernel_thread_id(uint64_t tid);
 
+/**
+ * The thread's id in the kernel's pid namespace, as the backend
+ * resolved and verified it against the tier's map.
+ *
+ * Returns 0 when the backend has not resolved it, which is the case
+ * until the thread has been scheduled and the tier's map has an entry
+ * for it.
+ */
+uint64_t pace_linux_thread_kernel_tid(pace_thread *thread);
+
 /* Shared helpers used by every backend. */
 
 /** Monotonic clock in nanoseconds. */

@@ -227,6 +227,20 @@ pace_status pace_bpf_read_preempted_ns(struct pace_bpf *bpf, uint64_t tid,
 }
 
 /**
+ * Whether the tier's map has an entry for a thread.
+ *
+ * The map's keys are the kernel's thread ids, so the map's presence for
+ * a candidate is the proof that the candidate is the kernel's id.
+ */
+int pace_bpf_has_thread(struct pace_bpf *bpf, uint64_t tid) {
+  if (!bpf || !bpf->available) return 0;
+
+  __u32 key = (__u32)tid;
+  __u64 value = 0;
+  return bpf_map_lookup_elem(bpf_map__fd(bpf->skel->maps.preempted_ns), &key, &value) == 0;
+}
+
+/**
  * Read a diagnostic counter from the tier's maps.
  *
  * The maps are looked up by name, because the two diagnostic maps have

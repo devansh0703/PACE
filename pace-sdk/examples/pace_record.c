@@ -31,13 +31,19 @@ static volatile int g_stop = 0;
 typedef struct {
   pace_session *session;
   uint64_t tid;
+  /** The thread's handle, for the SDK's resolved kernel id. */
+  pace_thread *handle;
 } worker;
 
 static void *worker_main(void *arg) {
   worker *w = (worker *)arg;
   pace_thread *handle = NULL;
   if (pace_session_register_thread(w->session, &handle) != PACE_OK) return NULL;
+  w->handle = handle;
   w->tid = pace_current_thread_id();
+  /* The kernel's id is resolved lazily, once the thread has been
+   * scheduled and the tier's map has an entry for it, so it is read at
+   * the end of the run rather than here. */
 
   pace_sample sample;
   pace_session_sample(w->session, handle, &sample);
@@ -101,16 +107,13 @@ int main(int argc, char **argv) {
       int resolved = 0, read = 0;
       for (int i = 0; i < nthreads; i++) {
         uint64_t value = 0;
-        /* The map is keyed by the kernel's thread id, which is not the
-         * one gettid() returns when there is more than one pid
-         * namespace. */
-        uint64_t kernel_tid = pace_kernel_thread_id(workers[i].tid);
-        if (kernel_tid == 0) {
-          kernel_tid = workers[i].tid;
-        } else {
-          resolved++;
-        }
-        if (pace_bpf_read_preempted_ns(bpf, kernel_tid, &value) == PACE_OK) {
+        /* The SDK's own resolution, which is verified against the map.
+         * The demo does not resolve again: the two would disagree, and
+         * the disagreement is what made the report unreadable. */
+        uint64_t kernel_tid = pace_linux_thread_kernel_tid(workers[i].handle);
+        if (kernel_tid != 0) resolved++;
+        if (kernel_tid != 0 &&
+            pace_bpf_read_preempted_ns(bpf, kernel_tid, &value) == PACE_OK) {
           if (value > 0) read++;
           total += value;
         }

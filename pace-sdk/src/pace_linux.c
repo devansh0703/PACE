@@ -617,7 +617,8 @@ static pace_status pace_linux_thread_init(pace_session *session, pace_thread *th
  * a short window at the start of a thread's life, and the value is
  * cached once it succeeds.
  */
-static uint64_t pace_linux_resolve_kernel_tid(pace_linux_thread *lt, uint64_t tid) {
+static uint64_t pace_linux_resolve_kernel_tid(pace_linux_thread *lt, uint64_t tid,
+                                               struct pace_bpf *bpf) {
   if (lt->kernel_tid != 0) return lt->kernel_tid;
 
   if (lt->kernel_tid_check_countdown > 0) {
@@ -628,7 +629,43 @@ static uint64_t pace_linux_resolve_kernel_tid(pace_linux_thread *lt, uint64_t ti
    * enough not to matter, and it stops entirely once it works. */
   lt->kernel_tid_check_countdown = 15;
 
-  lt->kernel_tid = pace_kernel_thread_id(tid);
+  uint64_t resolved = pace_kernel_thread_id(tid);
+
+  /* The resolution's answer is VERIFIED against the map, because it
+   * cannot be trusted on its own.
+   *
+   * The NSpid line is filled in from the outermost namespace inwards, so
+   * a partially filled line's last entry is a namespace's id and not the
+   * kernel's. And the map knows the truth: its keys ARE the kernel's
+   * thread ids.
+   *
+   * So the candidates are the resolved id and the namespace's id, and
+   * the one the map recognises is the kernel's. When the map recognises
+   * neither, the thread has not been scheduled since the program
+   * loaded, and the resolution is not yet verifiable -- so it is left
+   * unconfirmed and retried.
+   *
+   * Measured on a CI runner: the resolution answered wrongly for 16 of
+   * 48 workers, and those workers fell back to the kernel's counter
+   * while the tier claimed to be attached. */
+  if (bpf) {
+    if (resolved != 0 && pace_bpf_has_thread(bpf, resolved)) {
+      lt->kernel_tid = resolved;
+      return lt->kernel_tid;
+    }
+    if (pace_bpf_has_thread(bpf, tid)) {
+      /* The namespace's id IS the kernel's id: the process has one
+       * namespace, and the resolution's answer was a namespace's id
+       * rather than the kernel's. */
+      lt->kernel_tid = tid;
+      return lt->kernel_tid;
+    }
+    return 0;
+  }
+
+  if (resolved != 0) {
+    lt->kernel_tid = resolved;
+  }
   return lt->kernel_tid;
 }
 
@@ -695,7 +732,8 @@ static pace_status pace_linux_thread_read(pace_session *session, pace_thread *th
    * the sched_wakeup and sched_switch tracepoints rather than inferred from
    * a cumulative counter. */
   if (session->bpf_available) {
-    uint64_t kernel_tid = pace_linux_resolve_kernel_tid(lt, thread->thread_id);
+    uint64_t kernel_tid =
+        pace_linux_resolve_kernel_tid(lt, thread->thread_id, (struct pace_bpf *)session->bpf);
     uint64_t bpf_preempt = 0, bpf_block = 0, bpf_wakeup = 0;
     if (kernel_tid &&
         pace_bpf_read_thread((struct pace_bpf *)session->bpf, kernel_tid, &bpf_wakeup,
@@ -787,6 +825,22 @@ static pace_status pace_linux_thread_read(pace_session *session, pace_thread *th
 #endif
 
   return PACE_OK;
+}
+
+/**
+ * The thread's id in the kernel's pid namespace, as resolved and
+ * verified by the SDK.
+ *
+ * The tier's maps are keyed by that id, and it is not the one gettid()
+ * returns when the process has more than one pid namespace. An
+ * internal tool that reads the map needs the same id the SDK used, or
+ * its lookup misses.
+ */
+uint64_t pace_linux_thread_kernel_tid(pace_thread *thread) {
+  if (!thread) return 0;
+  pace_linux_thread *lt = (pace_linux_thread *)thread->backend_data;
+  if (!lt) return 0;
+  return lt->kernel_tid;
 }
 
 static void pace_linux_thread_free(pace_session *session, pace_thread *thread) {
