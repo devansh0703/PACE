@@ -245,40 +245,74 @@ jobs:
           #
           # It needs root for the perf-sched cross-checks, because
           # perf's scheduler tracing is privileged. Without it those
-          # checks skip, and the artifact would carry fewer measurements
-          # than the committed one, so the documents' figures would not
-          # match it.
+          # checks skip.
+          #
+          # The artifact goes to a path OUTSIDE the repository, so the
+          # runner's measurement cannot overwrite the committed one. The
+          # two are different measurements: this one is on the runner's
+          # hardware, and the committed one is on the machine the
+          # measurement was made on. Both are correct, and a CI run on
+          # different hardware must not be expected to reproduce the
+          # committed figures -- so the committed artifact is left alone
+          # and checked separately.
           sudo -n python3 tests/verify/verify_accuracy.py \
             --repetitions 30 \
             --duration-ms 400 \
-            --output results/accuracy.json
+            --output "$RUNNER_TEMP/accuracy.json"
 
-      - name: Check the documents' numbers against the artifact
+      - name: Check the documents' numbers against the committed artifact
         run: |
           # The same drift, in the documents. A number written by hand in
           # prose is a number that goes stale, and a stale number in a
           # document is a false claim.
           #
-          # The checker reads pace-sdk/results/accuracy.json, which the
-          # job above has just regenerated.
+          # The checker reads the COMMITTED artifact, the one in the
+          # checkout, which is the reproducible and reviewable
+          # measurement. It is deliberately NOT the artifact the job
+          # above just produced on the runner: that one is a measurement
+          # of the runner's hardware, and the documents are not supposed
+          # to quote it.
           python3 scripts/check_doc_numbers.py
 
       - name: Check that the documents' generator leaves them unchanged
         run: |
           # The generator rewrites the documents' figures from the
-          # artifact. If running it changes anything, the documents and
-          # the artifact disagree, and the check above says so too. This
-          # is the same drift caught from the other side.
+          # committed artifact. If running it changes anything, the
+          # documents and the artifact disagree, and the check above says
+          # so too. This is the same drift caught from the other side.
           python3 scripts/update_doc_numbers.py
           git diff --exit-code -- README.md PLAN.md pace-sdk/README.md \
             pace-sdk/docs/ACCURACY.md pace-sdk/docs/PREMISE-VERIFICATION.md
+
+      - name: Check that the committed artifact still passes its own checks
+        run: |
+          # The committed artifact records whether the harness's checks
+          # passed when it was produced. A committed artifact whose
+          # checks failed is a committed false claim, and it must not
+          # ship.
+          python3 - <<'PY'
+          import json, pathlib, sys
+          artifact = json.loads(
+              pathlib.Path("pace-sdk/results/accuracy.json").read_text())
+          failed = [
+              m["name"] for m in artifact["measurements"]
+              if not m.get("skipped") and m.get("n", 0) > 0 and not m.get("passed", True)
+          ]
+          if failed:
+              print("the committed artifact records a failed measurement:")
+              for name in failed:
+                  print(f"  {name}")
+              sys.exit(1)
+          print(f"the committed artifact records {len(artifact['measurements'])} "
+                "measurements, all within their thresholds")
+          PY
 
       - name: Publish the result artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: accuracy-results
-          path: pace-sdk/results/accuracy.json
+          path: ${{ runner.temp }}/accuracy.json
 
   # ---------------------------------------------------------------- websites
   websites:

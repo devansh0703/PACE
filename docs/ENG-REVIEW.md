@@ -300,7 +300,90 @@ This is worth recording for what it says about the process: the
 sanitizer that was added to catch a class of bug caught a bug of that
 class within a day of being added, in code written after it.
 
-### 12. The CI could not have run — **Medium**
+### 12. The eBPF tier had never worked — **Critical**
+
+The eBPF tier reported itself attached, its maps stayed empty, and the
+measurement it contributed was nothing. The tier's whole purpose is the
+refinement over the procfs tier, and it had never produced a single
+number.
+
+There were four bugs, and they had the same visible symptom, so none of
+them was visible from the outside:
+
+1. **The tracepoint's argument positions were wrong.** The program's
+   comment said the argument counts "were measured on this kernel". They
+   were not. The kernel's own `include/trace/events/sched.h` says:
+
+   ```
+   sched_switch(bool preempt, struct task_struct *prev,
+                struct task_struct *next, unsigned int prev_state)
+   ```
+
+   so the previous task is `args[1]` and the next is `args[2]`. The
+   program read `args[0]` and `args[1]` — a `bool` as a task pointer.
+
+2. **The signal used to decide preemption versus blocking was the
+   wrong one.** The tracepoint's *first* argument is a `bool` called
+   `preempt`, and the kernel sets it as `sched_mode == SM_PREEMPT`. So
+   it is true only for a preemption of the kernel by a higher-priority
+   context, and not for the ordinary timeslice preemption that a
+   contended workload produces. On a kernel built without
+   `CONFIG_PREEMPT` it is essentially never true. The signal that says
+   what is needed is `prev_state`: `TASK_RUNNING` means the task was
+   runnable when it was switched out, which is the preemption case.
+
+3. **libbpf's generated skeleton attach helper discards the individual
+   attach errors**, so a program that failed to attach left the tier
+   reporting itself attached. The loader attaches each program itself
+   now, and checks each result.
+
+4. **The failure was reported as an error pointer** — a small negative
+   value — and not as `NULL`, so a plain `if (!link)` test passed on a
+   failure. The check is `libbpf_get_error()` now.
+
+**How it was found.** Not by a test. The tier's own verification program
+reported "16 of 32 workers were preempted" and passed, because the
+measurement it was checking came from the *kernel's* counter — the
+fallback — while the tier itself contributed nothing. The tier was
+reporting a measurement it had not made.
+
+It was found by measuring the tier against the kernel's counter
+directly, and by dumping the maps while the program ran. The maps were
+empty. That is the check that had been missing: **the tier's own maps
+were never read back and compared against an independent source.**
+
+The comparison program is now part of the build
+(`pace-sdk/tests/verify/compare_counters.c`), and it reads the kernel's
+`run_delay` and the eBPF tier's measurement for the same threads in the
+same window. On 48 workers over 4 CPUs:
+
+```
+the kernel's total run_delay: 87808354476 ns
+the eBPF tier's total:         86437714750 ns
+the eBPF measurement is -1.56 % of the kernel's counter
+```
+
+and per thread the two agree to within 0.001 %.
+
+### 13. The CI's document check failed on every run on different hardware — **High**
+
+The accuracy job regenerated the artifact on the runner and then checked
+the documents against it. But the documents quote the *committed*
+artifact, which was measured on a 16-CPU machine, while the runner has
+4 CPUs. Both measurements are correct; they are different measurements.
+
+So the check as written failed on any runner that was not the machine
+the measurement was made on, and passed on one that was, by coincidence.
+The failure it produced was a false positive: 29 complaints about
+numbers that were not wrong.
+
+The job now writes the runner's artifact outside the repository, checks
+the documents against the *committed* artifact, and separately checks
+that the committed artifact's own recorded checks passed. The runner's
+numbers are still uploaded as a build output, so they are available
+without being treated as the published figures.
+
+### 14. The CI could not have run — **Medium**
 
 The workflow checked out one repository at the workspace root and then
 ran the analyzer, the SDK and the websites from it. The three products are
@@ -412,6 +495,8 @@ REALITY: premise-table pass "A reused sample struct carries no stale fields, bec
 REALITY: premise-table pass "The eBPF tier attaches, and it is verified by reading its own maps back after a contended workload." pace-sdk/tests/verify/verify_ebpf.c:1
 REALITY: premise-table pass "The perf cross-checks compare the same window on both sides, and a thread whose windows differ is excluded rather than compared." pace-sdk/tests/verify/verify_accuracy.py:1
 REALITY: premise-table pass "A preemption of zero is never reported when the kernel is not collecting the scheduler statistics." pace-sdk/src/pace_linux.c:291
+REALITY: premise-table pass "The eBPF tier measures the preemption wait, and it is read back and compared against the kernel's own counter for the same threads." pace-sdk/tests/verify/compare_counters.c:1
+REALITY: premise-table pass "The documents quote the committed artifact, and a run on other hardware does not overwrite it." scripts/check_doc_numbers.py:1
 REALITY: premise-table pass "The hot path is 524 ns at tier 0 and does not allocate." pace-sdk/examples/pace_overhead
 REALITY: premise-table pass "The decomposition invariant holds exactly on every sample." pace-sdk/results/accuracy.json
 REALITY: premise-table pass "A thread handle cannot be used with the wrong session." pace-sdk/src/pace_session.c:336

@@ -6,6 +6,8 @@ REALITY: premise-table pass "A reused sample struct carries no stale fields, bec
 REALITY: premise-table pass "The eBPF tier attaches, and it is verified by reading its own maps back after a contended workload." pace-sdk/tests/verify/verify_ebpf.c:1
 REALITY: premise-table pass "The perf cross-checks compare the same window on both sides, and a thread whose windows differ is excluded rather than compared." pace-sdk/tests/verify/verify_accuracy.py:1
 REALITY: premise-table pass "A preemption of zero is never reported when the kernel is not collecting the scheduler statistics." pace-sdk/src/pace_linux.c:291
+REALITY: premise-table pass "The eBPF tier measures the preemption wait, and it is read back and compared against the kernel's own counter for the same threads." pace-sdk/tests/verify/compare_counters.c:1
+REALITY: premise-table pass "The documents quote the committed artifact, and a run on other hardware does not overwrite it." scripts/check_doc_numbers.py:1
 REALITY: premise-table pass "The hot path is 524 ns at tier 0 and does not allocate." pace-sdk/examples/pace_overhead
 REALITY: premise-table pass "The decomposition invariant holds exactly on every sample." pace-sdk/results/accuracy.json
 REALITY: premise-table pass "A thread handle cannot be used with the wrong session." pace-sdk/src/pace_session.c:336

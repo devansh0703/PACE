@@ -83,8 +83,13 @@ on-CPU time did not move at all.
 time it spent runnable but not scheduled (the run-queue delay), and the
 number of timeslices it was given.
 
-**The second field is PACE's preemption measurement**, and it is the only
-unprivileged source of it on Linux.
+**The second field is PACE's preemption measurement** in the procfs tier,
+and it is the only unprivileged source of it on Linux. It is also a
+*lower bound*: the kernel computes it from the time of queueing to the
+time of dequeuing, so a thread that is queued and then migrated or
+requeued loses the interval. The eBPF tier measures the interval
+directly, and the difference is large on some kernels — see the eBPF
+section below.
 
 **The kernel must be collecting the scheduler statistics.** The kernel's
 `sched_info_on()` decides whether the second field is populated:
@@ -108,8 +113,14 @@ measurement is reported as an absence, and never as a confident zero.
 
 Measured on a CI runner: the preemption was reported as zero while perf's
 own `sch delay` said 88 % of the wall time had been lost to the run
-queue. The two now agree, and where the kernel does not collect the
-statistics, neither number is claimed.
+queue. Where the kernel does not collect the statistics, neither number
+is claimed.
+
+**And where the kernel does collect them, the counter can still be far
+short.** On a CI runner with the statistics on, the counter reported
+0.30 s where perf reconstructed 1.81 s. So the counter being present is
+not the same as the counter being complete, and the eBPF tier exists to
+measure the interval the counter loses.
 
 **Permission.** None to read the file. The toggle needs root, but the
 toggle is a machine-wide setting and not something PACE changes on a
@@ -168,6 +179,44 @@ require it.
 scheduler's own events, so counting them is a direct measurement of the
 involuntary switches rather than an inference from a cumulative counter.
 
+**They also measure the preemption WAIT, which is the tier's real
+value.** The kernel's `run_delay` counter measures the same phenomenon
+as the time from **queuing** to **dequeuing**:
+
+```c
+/* kernel/sched/stats.h */
+static inline void sched_info_queued(struct rq *rq, struct task_struct *t) {
+        if (unlikely(sched_info_on())) {
+                if (!t->sched_info.last_queued)
+                        t->sched_info.last_queued = rq_clock(rq);
+        }
+}
+```
+
+A thread that is woken, queued, and then migrated or requeued loses the
+interval, because the counter is reset when the thread leaves one
+runqueue and only restarts when it enters the next.
+
+**Measured on a CI runner**, the kernel's counter reported **0.30 s** of
+preemption where perf reconstructed **1.81 s** — an 80 % undercount —
+while PACE's on-CPU time and its total off-CPU time both agreed with
+perf. So the counter is a lower bound, and the lower bound is loose.
+
+The eBPF tier measures the interval directly: from the thread's
+`sched_wakeup`, or from the switch-out that preempted it, to the
+`sched_switch` that actually ran it. Measured against the kernel's
+counter for the same threads in the same window, on 48 workers over 4
+CPUs:
+
+```
+the kernel's total run_delay: 87808354476 ns
+the eBPF tier's total:         86437714750 ns
+the eBPF measurement is -1.56 % of the kernel's counter
+```
+
+and per thread the two agree to within 0.001 %. The harness's
+preemption check against perf improves from 5.78 % to **0.42 %**.
+
 **Permission.** Attaching needs the kernel's raw tracepoints opened, which
 needs `CAP_BPF` and `CAP_PERFMON`, and the kernel needs BTF for CO-RE
 relocation. The object is built against the building kernel's BTF and
@@ -195,24 +244,55 @@ gated differently, and it attaches. The tier therefore uses
 
 **The raw form's cost.** A raw tracepoint's arguments are the tracepoint's
 *proto* arguments, and the verifier rejects a program that reads past the
-last one. The counts were measured on this kernel:
+last one. The protos are in the kernel's own
+`include/trace/events/sched.h`, and they are:
 
-| Tracepoint | Arguments | What they are |
+| Tracepoint | Proto | What the arguments are |
 |---|---|---|
-| `sched_wakeup` | 1 | the `task_struct` that was woken |
-| `sched_switch` | 2 | the previous and the next `task_struct` |
-| `sched_process_exit` | 2 | the `task_struct` and the exit code |
+| `sched_wakeup` | `(struct task_struct *p)` | the task that was woken |
+| `sched_switch` | `(bool preempt, struct task_struct *prev, struct task_struct *next, unsigned int prev_state)` | a flag, the previous task, the next task, the previous task's state |
+| `sched_process_exit` | `(struct task_struct *p, bool group_dead)` | the task that is exiting |
 
-The thread id is therefore read from the `task_struct` with a CO-RE read,
-which is also what keeps the program portable across kernels whose
-`task_struct` layout differs.
+So for `sched_switch` the previous task is `args[1]` and the next is
+`args[2]` — **not** `args[0]` and `args[1]`. An earlier version of the
+program had them wrong, and the consequence was silent: it read the
+`bool` as a task pointer, produced garbage thread ids, wrote nothing to
+its maps, and reported itself attached the whole time.
 
-**Verification.** `tests/verify/verify_ebpf.c` attaches the tier, runs 32
-contending spinners, and reads the tier's own maps back. Measured on this
-machine: **22 of 32 workers were preempted, 73.5 ms of 75.7 ms of wall
-time**, and the decomposition held exactly on every sample. Unprivileged
-the tier reports itself unavailable and the procfs tier carries the
-measurement.
+The `bool preempt` is **not** the signal for "was this thread runnable".
+The kernel sets it as `sched_mode == SM_PREEMPT`, so it is true only for
+a preemption of the kernel by a higher-priority context, and not for the
+ordinary timeslice preemption a contended workload produces. On a kernel
+built without `CONFIG_PREEMPT` it is essentially never true.
+
+The signal that says what is needed is the fourth argument,
+`prev_state`: `TASK_RUNNING` (0) means the task was runnable when it was
+switched out, which is the preemption case; any other value means it was
+sleeping, which is the blocking case. So the attribution is exact rather
+than inferred.
+
+The thread id is read from the `task_struct` with a CO-RE read, which is
+also what keeps the program portable across kernels whose `task_struct`
+layout differs.
+
+**Verification.** Two programs, because attaching is not working.
+
+`tests/verify/verify_ebpf.c` attaches the tier, runs 32 contending
+spinners, and reads the tier's own maps back.
+
+`tests/verify/compare_counters.c` reads the kernel's `run_delay` and the
+eBPF tier's measurement for the same threads in the same window, and
+compares them. This is the check that was missing, and its absence is
+why four bugs in the tier went unnoticed: **the tier's own maps were
+never read back and compared against an independent source.** The
+tier's verification program reported a pass while the measurement it
+checked came from the fallback rather than from the tier.
+
+The tier's numbers are also compared against perf's own reconstruction in
+the accuracy harness, which is the third independent source.
+
+Unprivileged the tier reports itself unavailable and the procfs tier
+carries the measurement.
 
 ### The reference clock
 
