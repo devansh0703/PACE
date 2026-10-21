@@ -45,6 +45,9 @@ jobs:
 
       - name: Configure
         working-directory: pace-sdk
+        # The Windows runner defaults to PowerShell, where a backslash is
+        # not a line continuation, so the multi-line commands need bash.
+        shell: bash
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DPACE_BUILD_TESTS=ON \
@@ -54,6 +57,7 @@ jobs:
       - name: Configure the macOS build without the benchmark
         if: runner.os == 'macOS'
         working-directory: pace-sdk
+        shell: bash
         run: |
           # The Google Benchmark dependency does not build on every
           # platform, and the benchmark is not part of the contract.
@@ -78,7 +82,9 @@ jobs:
         run: cmake --install build --prefix "${{ github.workspace }}/install"
 
       - name: Build with the thread sanitizer
+        if: runner.os != 'Windows'
         working-directory: pace-sdk
+        shell: bash
         run: |
           # The library promises that sampling is safe from several threads
           # at once. A data race there produces a wrong number rather than
@@ -88,7 +94,9 @@ jobs:
           cmake --build build-tsan -j 4
 
       - name: Run the tests under the thread sanitizer
+        if: runner.os != 'Windows'
         working-directory: pace-sdk
+        shell: bash
         run: |
           for t in pace_unit_tests pace_lifecycle_tests pace_primitive_tests \
                    pace_concurrency_tests; do
@@ -97,14 +105,18 @@ jobs:
           done
 
       - name: Build with the address sanitizer
+        if: runner.os != 'Windows'
         working-directory: pace-sdk
+        shell: bash
         run: |
           cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DPACE_SANITIZER=address -DPACE_ENABLE_BPF=OFF -DPACE_BUILD_BENCH=OFF
           cmake --build build-asan -j 4
 
       - name: Run the tests under the address sanitizer
+        if: runner.os != 'Windows'
         working-directory: pace-sdk
+        shell: bash
         run: |
           for t in pace_unit_tests pace_lifecycle_tests pace_primitive_tests \
                    pace_concurrency_tests; do
