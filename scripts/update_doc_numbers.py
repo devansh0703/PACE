@@ -202,9 +202,45 @@ def update_prose(line: str, values: dict[str, dict]) -> tuple[str, bool]:
     return line, bool(claimed)
 
 
+def update_sample_count(line: str, total: int) -> tuple[str, bool]:
+    """Replace the trace's sample count in a line with the artifact's.
+
+    A comma-formatted number in a line that ties the number to the
+    trace or the invariant. A nanosecond duration and a cycle count are
+    also comma-formatted, so the surrounding words are what
+    distinguishes them, and a line that talks about samples is a
+    candidate.
+    """
+    if "sample" not in line.lower():
+        return line, False
+
+    current = f"{total:,}"
+
+    def replace(m: re.Match) -> str:
+        value = m.group(1)
+        if value == current:
+            return m.group(0)
+        # The analyzer's committed trace has its own, stable count.
+        if value == "106,023":
+            return m.group(0)
+        # A count that is not about the trace's size: a duration, a cycle
+        # count, a benchmark's own sample count.
+        if "cycles" in line.lower() and "ns" not in line.lower():
+            return m.group(0)
+        if re.search(r"per measurement|per call|per repetition", line, re.I):
+            return m.group(0)
+        if int(value.replace(",", "")) < 50000:
+            return m.group(0)
+        return current
+
+    new_line = re.sub(r"\b(\d{1,3}(?:,\d{3})+)\b", replace, line)
+    return new_line, new_line != line
+
+
 def main() -> int:
     artifact = load_artifact()
     values = measurement_values(artifact)
+    total = artifact["decomposition"]["total_samples"]
     changed_files = 0
     changed_rows = 0
 
@@ -219,6 +255,8 @@ def main() -> int:
             new_line, changed = update_table_row(line, values)
             if not changed:
                 new_line, changed = update_prose(line, values)
+            if not changed:
+                new_line, changed = update_sample_count(line, total)
             if changed:
                 file_changed = True
                 changed_rows += 1
