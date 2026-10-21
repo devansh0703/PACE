@@ -9,6 +9,7 @@
 #include "pace_session.h"
 
 #include <pthread.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -310,6 +311,64 @@ static void test_every_status_carries_a_fix_and_a_recovery(void) {
   }
 }
 
+/**
+ * A sample struct reused across calls must not carry the previous call's
+ * values.
+ *
+ * The sample is written field by field, and some fields are only written
+ * on some paths. A caller that reuses one struct across calls -- which
+ * is the natural thing to do on the hot path -- would otherwise see the
+ * previous call's source, cycle count and ratio in the fields this call
+ * did not write.
+ *
+ * The macOS CI runner caught this, because there the caller's struct is
+ * not zeroed between calls. It is a test on every platform, because the
+ * failure is silent where the caller happens to zero the struct.
+ */
+static void test_a_reused_sample_carries_no_stale_fields(void) {
+  pace_config cfg;
+  pace_config_init(&cfg);
+
+  pace_session *session = NULL;
+  CHECK(pace_session_create(&cfg, &session) == PACE_OK, "the session was created");
+
+  pace_thread *thread = NULL;
+  CHECK(pace_session_register_thread(session, &thread) == PACE_OK, "registered");
+
+  /* One struct, filled many times, never cleared. */
+  pace_sample sample;
+  memset(&sample, 0, sizeof sample);
+  for (int i = 0; i < 8; i++) {
+    CHECK(pace_session_sample(session, thread, &sample) == PACE_OK, "sampled");
+  }
+
+  /* Whatever the platform, the sample must say what it actually knows. */
+  CHECK(sample.source == PACE_SOURCE_PERF || sample.source == PACE_SOURCE_CLOCK ||
+            sample.source == PACE_SOURCE_UNKNOWN,
+        "the source is one of the three known values: %d", (int)sample.source);
+
+  /* A cycle count is only claimed when the flag says it was measured. */
+  if (!(sample.flags & PACE_SAMPLE_F_HAS_CORE_CYCLES)) {
+    CHECK(sample.core_cycles == 0,
+          "a sample without measured core cycles must report zero, not %" PRIu64,
+          sample.core_cycles);
+  }
+
+  /* The preemption split is only claimed when the platform can measure
+   * it. On Windows and macOS it cannot, and the sample must say so
+   * rather than reporting a confident zero. */
+  if (!(sample.flags & PACE_SAMPLE_F_HAS_PREEMPTED)) {
+    CHECK(sample.preempted_ns == 0,
+          "a sample without a preemption split must report zero, not %" PRIu64,
+          sample.preempted_ns);
+  }
+
+  /* The reserved field is reserved, so it is always zero. */
+  CHECK(sample._reserved1 == 0, "the reserved field is zero");
+
+  pace_session_destroy(session);
+}
+
 int main(void) {
   printf("PACE backend: %s\n", pace_backend_name());
 
@@ -321,6 +380,7 @@ int main(void) {
   test_the_fast_path_survives_a_destroyed_session();
   test_stats_struct_size_is_checked();
   test_every_status_carries_a_fix_and_a_recovery();
+  test_a_reused_sample_carries_no_stale_fields();
 
   printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;

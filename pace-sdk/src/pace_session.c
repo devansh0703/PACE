@@ -293,6 +293,16 @@ pace_status pace_session_register_thread(pace_session *session, pace_thread **ou
  */
 static pace_status pace_fill_sample(pace_session *session, pace_thread *thread,
                                     const pace_raw *raw, pace_sample *out_sample) {
+  /* The sample is written field by field, and some fields are only
+   * written on some paths. A struct the caller reuses across calls would
+   * therefore keep the previous call's values in the fields this path
+   * does not write: a stale source, a stale cycle count, a stale ratio.
+   *
+   * So the sample is cleared first, and every field in it is written by
+   * this function. */
+  memset(out_sample, 0, sizeof *out_sample);
+  out_sample->struct_size = (uint32_t)sizeof *out_sample;
+
   if (!thread->have_baseline) {
     thread->base_wall_ns = raw->wall_ns;
     thread->base_on_cpu_ns = raw->on_cpu_ns;
@@ -303,8 +313,6 @@ static pace_status pace_fill_sample(pace_session *session, pace_thread *thread,
     thread->base_ref_cycles = raw->ref_cycles;
     thread->have_baseline = 1;
 
-    memset(out_sample, 0, sizeof *out_sample);
-    out_sample->struct_size = (uint32_t)sizeof *out_sample;
     out_sample->source = session->source;
     out_sample->flags |= PACE_SAMPLE_F_DEGRADED;
     __atomic_fetch_add(&session->samples_taken, 1, __ATOMIC_RELAXED);
@@ -342,6 +350,12 @@ static pace_status pace_fill_sample(pace_session *session, pace_thread *thread,
   out_sample->on_cpu_ns = on_cpu;
   out_sample->preempted_ns = run_delay;
   out_sample->blocked_ns = blocked;
+
+  /* The source is the session's tier, which is the clock tier unless a
+   * hardware counter was read, in which case it is PERF. Without this the
+   * sample would carry no source at all, and a consumer could not tell a
+   * clock-derived cycle count from a measured one. */
+  out_sample->source = session->source;
 
   out_sample->involuntary_switches = raw->involuntary_switches - thread->base_involuntary;
   out_sample->voluntary_switches = raw->voluntary_switches - thread->base_voluntary;
