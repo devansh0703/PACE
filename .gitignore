@@ -1,6 +1,8 @@
-# Build output
+# Build output. The trailing slashes matter: they match directories
+# only, so a file named build_release_asset.sh is not ignored.
 build/
 build-*/
+build_*/
 dist/
 target/
 node_modules/
@@ -11,11 +13,18 @@ node_modules/
 *.dll
 compile_commands.json
 
-# The SDK's generated eBPF skeleton
+# The SDK's generated eBPF skeleton, and the kernel's BTF dump it is
+# generated from. Both are build outputs, and both are large.
 pace-sdk/src/bpf/skel/
+pace-sdk/src/bpf/vmlinux.h
+pace-sdk/src/bpf/*.skel.h
 
 # Editor and OS noise
 .vscode/
 .idea/
 .DS_Store
 *.swp
+
+# Python's bytecode cache
+__pycache__/
+*.pyc

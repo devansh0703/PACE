@@ -1,8 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"/home/devansh/kernel_suite/pace-sdk/build_nobpf/cmake_install.cmake",
-		"/home/devansh/kernel_suite/pace-sdk/build_nobpf/examples/cmake_install.cmake"
-	],
-	"Parallel" : false
-}
