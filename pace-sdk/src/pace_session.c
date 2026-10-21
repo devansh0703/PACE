@@ -307,13 +307,10 @@ static pace_status pace_fill_sample(pace_session *session, pace_thread *thread,
     thread->base_wall_ns = raw->wall_ns;
     thread->base_on_cpu_ns = raw->on_cpu_ns;
     thread->base_run_delay_ns = raw->run_delay_ns;
-    thread->base_kernel_run_delay_ns = raw->run_delay_ns;
-    thread->frozen_preempted_ns = 0;
     thread->base_involuntary = raw->involuntary_switches;
     thread->base_voluntary = raw->voluntary_switches;
     thread->base_core_cycles = raw->core_cycles;
     thread->base_ref_cycles = raw->ref_cycles;
-    thread->base_preempted_from_bpf = raw->preempted_from_bpf;
     thread->have_baseline = 1;
 
     out_sample->source = session->source;
@@ -323,101 +320,10 @@ static pace_status pace_fill_sample(pace_session *session, pace_thread *thread,
     return PACE_OK;
   }
 
-  /* The preemption time can come from two different counters: the
-   * kernel's run-queue delay, or the eBPF tier's measurement of the
-   * scheduler's own events. They are different counters with different
-   * bases, so a baseline taken from one cannot be subtracted from a
-   * sample of the other.
-   *
-   * The source changes when the eBPF tier is attached mid-session, or
-   * when a thread the program has not seen yet is first sampled. When it
-   * changes the baseline is re-taken and the sample is reported as
-   * degraded, because it spans the change and is therefore not a
-   * measurement of either window. */
-  if (raw->preempted_from_bpf != thread->base_preempted_from_bpf) {
-    /* The source changes when the tier's map recognises the thread, and
-     * the two counters measure the same phenomenon over DISJOINT
-     * windows: the kernel's counter was the source until now, and the
-     * tier's is the source from now on.
-     *
-     * So the kernel's contribution is FROZEN at its value now, rather
-     * than dropped, and the two are added.
-     *
-     * Without the freeze, the time before the tier's map recognised the
-     * thread was lost, and on a CI runner that was 1.16 s of every
-     * thread's 1.81 s of preemption: the thread was measured as
-     * preempted for 0.65 s when it was really preempted for 1.81 s.
-     *
-     * The sample itself is still degraded, because it spans the change
-     * and is therefore not a measurement of either window alone. */
-    if (thread->base_preempted_from_bpf == 0) {
-      /* The kernel's counter was the source, so its contribution is the
-       * difference from the kernel's baseline. */
-      uint64_t kernel_delta = raw->run_delay_ns - thread->base_kernel_run_delay_ns;
-      thread->frozen_preempted_ns += kernel_delta;
-    } else {
-      /* The tier was the source, and now the kernel's is. */
-      uint64_t tier_delta = raw->run_delay_ns - thread->base_run_delay_ns;
-      thread->frozen_preempted_ns += tier_delta;
-    }
-
-    thread->base_run_delay_ns = raw->run_delay_ns;
-    thread->base_kernel_run_delay_ns = raw->run_delay_ns;
-    thread->base_preempted_from_bpf = raw->preempted_from_bpf;
-
-    /* The sample is NOT emptied. Its window is the whole time since the
-     * thread's first sample -- the wall and on-CPU baselines are not
-     * reset -- so it can carry the frozen contribution, which belongs to
-     * the pre-switch window, together with the tier's difference for the
-     * post-switch window.
-     *
-     * Carrying it in the NEXT sample instead would truncate it: that
-     * sample's window is only the post-switch part, and the clamp
-     * would cut the frozen contribution down to it.
-     *
-     * The sample is still degraded, because its window spans a change of
-     * source, but its values are the window's. */
-    uint64_t switch_wall = raw->wall_ns - thread->base_wall_ns;
-    uint64_t switch_on_cpu = raw->on_cpu_ns - thread->base_on_cpu_ns;
-    uint64_t switch_run_delay = raw->run_delay_ns - thread->base_run_delay_ns;
-    /* The frozen contribution is carried by THIS sample, so it is
-     * cleared here rather than by the next one. */
-    switch_run_delay += thread->frozen_preempted_ns;
-    thread->frozen_preempted_ns = 0;
-
-    int64_t signed_wall = (int64_t)switch_wall;
-    int64_t signed_on_cpu = (int64_t)switch_on_cpu;
-    int64_t signed_run_delay = (int64_t)switch_run_delay;
-    if (signed_on_cpu < 0) signed_on_cpu = 0;
-    if (signed_run_delay < 0) signed_run_delay = 0;
-    if (signed_on_cpu > signed_wall) signed_on_cpu = signed_wall;
-    if (signed_run_delay > signed_wall - signed_on_cpu) {
-      signed_run_delay = signed_wall - signed_on_cpu;
-    }
-
-    out_sample->wall_ns = switch_wall;
-    out_sample->on_cpu_ns = (uint64_t)signed_on_cpu;
-    out_sample->preempted_ns = (uint64_t)signed_run_delay;
-    out_sample->blocked_ns =
-        (uint64_t)(signed_wall - signed_on_cpu - signed_run_delay);
-    out_sample->source = session->source;
-    out_sample->flags |= PACE_SAMPLE_F_DEGRADED;
-    if (raw->preempted_from_bpf) {
-      out_sample->flags |= PACE_SAMPLE_F_PREEMPTED_FROM_EVENTS;
-    }
-    __atomic_fetch_add(&session->samples_taken, 1, __ATOMIC_RELAXED);
-    __atomic_fetch_add(&session->degraded_samples, 1, __ATOMIC_RELAXED);
-    return PACE_OK;
-  }
-
   uint64_t wall = raw->wall_ns - thread->base_wall_ns;
   uint64_t on_cpu = raw->on_cpu_ns - thread->base_on_cpu_ns;
   uint64_t run_delay = raw->run_delay_ns - thread->base_run_delay_ns;
 
-  /* The frozen contribution was carried by the sample that observed the
-   * change of source, which has the window that belongs to it. It is
-   * zero here, because it has already been counted once. */
-  run_delay += thread->frozen_preempted_ns;
 
   /* The three underlying reads (CLOCK_THREAD_CPUTIME_ID, /proc/<tid>/schedstat
    * and the wall clock) are not atomic, so the raw difference can be off by a
@@ -508,7 +414,6 @@ static pace_status pace_fill_sample(pace_session *session, pace_thread *thread,
   thread->base_voluntary = raw->voluntary_switches;
   thread->base_core_cycles = raw->core_cycles;
   thread->base_ref_cycles = raw->ref_cycles;
-  thread->base_preempted_from_bpf = raw->preempted_from_bpf;
 
   /* The session's counters are shared by every thread sampling it, so
    * they are incremented atomically. A plain ++ is a read-modify-write,

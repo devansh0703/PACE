@@ -622,6 +622,14 @@ static uint64_t pace_linux_resolve_kernel_tid(pace_linux_thread *lt, uint64_t ti
   if (lt->kernel_tid != 0) return lt->kernel_tid;
   if (!bpf) return 0;
 
+  /* The namespace's id is tried FIRST, because on a machine with one
+   * pid namespace it IS the kernel's id, and the map confirms it in one
+   * cheap lookup with no /proc read at all. */
+  if (pace_bpf_has_thread(bpf, tid)) {
+    lt->kernel_tid = tid;
+    return lt->kernel_tid;
+  }
+
   /* The map's keys ARE the kernel's thread ids, so the map's presence
    * for a candidate is the proof that the candidate is the kernel's.
    *
@@ -647,11 +655,6 @@ static uint64_t pace_linux_resolve_kernel_tid(pace_linux_thread *lt, uint64_t ti
    * Measured on a CI runner: the resolution answered wrongly for 16 of
    * 48 workers, and those workers fell back to the kernel's counter
    * while the tier claimed to be attached. */
-  if (pace_bpf_has_thread(bpf, tid)) {
-    lt->kernel_tid = tid;
-    return lt->kernel_tid;
-  }
-
   if (lt->kernel_tid_check_countdown > 0) {
     lt->kernel_tid_check_countdown--;
     return 0;
@@ -663,8 +666,18 @@ static uint64_t pace_linux_resolve_kernel_tid(pace_linux_thread *lt, uint64_t ti
   uint64_t resolved = pace_kernel_thread_id(tid);
   if (resolved != 0 && pace_bpf_has_thread(bpf, resolved)) {
     lt->kernel_tid = resolved;
+    return lt->kernel_tid;
   }
-  return lt->kernel_tid;
+
+  /* The map recognises neither, so the thread has not been scheduled
+   * since the program loaded, and the tier's value for it is zero --
+   * which is correct: a thread that has not run has not been
+   * preempted.
+   *
+   * So the namespace's id is used, and the value is read under it. The
+   * thread's first switch-in creates the map's entry under the kernel's
+   * id, and the resolution is confirmed at the next sample. */
+  return tid;
 }
 
 static pace_status pace_linux_thread_read(pace_session *session, pace_thread *thread,
@@ -763,18 +776,23 @@ static pace_status pace_linux_thread_read(pace_session *session, pace_thread *th
      * change of source, which re-takes the baseline and degrades the
      * sample. */
     uint64_t bpf_preempted_ns = 0;
-    if (kernel_tid &&
-        pace_bpf_read_preempted_ns((struct pace_bpf *)session->bpf, kernel_tid,
+    if (pace_bpf_read_preempted_ns((struct pace_bpf *)session->bpf, kernel_tid,
                                    &bpf_preempted_ns) == PACE_OK) {
-      out_raw->run_delay_ns = bpf_preempted_ns;
-      /* The flag says which counter supplied the value, and the tier
-       * supplies it from the moment the resolution succeeds -- which is
-       * stable. A zero from the tier is a real measurement, so the flag
-       * does not depend on the value.
+      /* The tier's counter starts at zero when the program loads, so its
+       * difference from the thread's first sample is the whole window's
+       * preemption. There is no need to switch sources, and switching
+       * was losing the accumulated time: the re-baseline at the switch
+       * took the tier's CURRENT value, which already included the
+       * thread's first preemption, and the differences from then on
+       * covered only the time after it.
        *
-       * And when the resolution has not succeeded, the kernel's counter
-       * is the source, and the flag says so, so the session's baseline
-       * logic sees no change of source. */
+       * Measured on a CI runner: the thread was measured as preempted
+       * for 0.38 s when the tier's counter said 1.78 s.
+       *
+       * Before the thread's first switch-in the tier's value is zero,
+       * and zero is correct: the thread has not been scheduled, so it
+       * has not been preempted. */
+      out_raw->run_delay_ns = bpf_preempted_ns;
       out_raw->preempted_from_bpf = 1;
     }
   }

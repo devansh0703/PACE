@@ -57,36 +57,6 @@ struct pace_thread {
    * observes the change is reported as degraded rather than as a
    * measurement.
    */
-  int base_preempted_from_bpf;
-
-  /**
-   * The preemption time measured by the source that is NOT the current
-   * one, over the window during which it was the source.
-   *
-   * The two counters are different, so a baseline from one cannot be
-   * subtracted from a sample of the other. But they measure the same
-   * phenomenon over DISJOINT windows: the kernel's counter is the
-   * source until the tier's map has an entry for the thread, and the
-   * tier's is the source afterwards. So the two windows add.
-   *
-   * The contribution is frozen at the moment the source changes, and it
-   * is then added to the current source's difference.
-   *
-   * Without this, the time before the tier's map recognised the thread
-   * was dropped, and on a CI runner that was 1.16 s of every thread's
-   * 1.81 s of preemption.
-   */
-  uint64_t frozen_preempted_ns;
-
-  /**
-   * The kernel's counter's baseline, kept separately from the tier's.
-   *
-   * The tier's baseline is re-taken when the source changes, and the
-   * kernel's is not, because the kernel's contribution is frozen rather
-   * than replaced.
-   */
-  uint64_t base_kernel_run_delay_ns;
-
   /* Backend-owned state. */
   void *backend_data;
 };
