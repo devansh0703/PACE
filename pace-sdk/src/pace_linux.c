@@ -282,32 +282,40 @@ static int pace_open_schedstat(uint64_t tid) {
  * unavailable rather than as zero.
  */
 static int pace_schedstat_available(void) {
-  static int cached = -1;
-  if (cached >= 0) return cached;
+  /* The value is computed once and never changes, but it is computed by
+   * whichever thread arrives first, and read by the others. A plain
+   * static int would be a data race, which the thread sanitizer
+   * reports. So it is atomic. */
+  static _Atomic int cached = -1;
+
+  int known = __atomic_load_n(&cached, __ATOMIC_ACQUIRE);
+  if (known >= 0) return known;
+
+  int available = 0;
 
   /* CONFIG_SCHEDSTATS compiled in: the statistics are always collected,
    * whatever the toggle says. */
   if (access("/proc/sys/kernel/sched_schedstats", F_OK) == 0) {
-    cached = 1;
-    return cached;
-  }
-
-  /* Only the delayacct fallback: the toggle decides, and it is off by
-   * default. */
-  if (access("/proc/sys/kernel/task_delayacct", F_OK) == 0) {
+    available = 1;
+  } else if (access("/proc/sys/kernel/task_delayacct", F_OK) == 0) {
+    /* Only the delayacct fallback: the toggle decides, and it is off by
+     * default. */
     int value = 0;
     FILE *f = fopen("/proc/sys/kernel/task_delayacct", "r");
     if (f) {
       if (fscanf(f, "%d", &value) != 1) value = 0;
       fclose(f);
     }
-    cached = value == 1;
-    return cached;
+    available = value == 1;
   }
+  /* Neither: the counters are not collected at all, and available stays
+   * zero. */
 
-  /* Neither: the counters are not collected at all. */
-  cached = 0;
-  return cached;
+  /* A later thread may have got here first and computed the same
+   * answer, so the store is unconditional and the value is the same
+   * either way. */
+  __atomic_store_n(&cached, available, __ATOMIC_RELEASE);
+  return available;
 }
 
 /**

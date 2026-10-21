@@ -86,7 +86,34 @@ number of timeslices it was given.
 **The second field is PACE's preemption measurement**, and it is the only
 unprivileged source of it on Linux.
 
-**Permission.** None. The file is readable by the thread's owner.
+**The kernel must be collecting the scheduler statistics.** The kernel's
+`sched_info_on()` decides whether the second field is populated:
+
+| Kernel | The file reads |
+|---|---|
+| `CONFIG_SCHEDSTATS` compiled in | the real values, always |
+| only `CONFIG_TASK_DELAY_ACCT` | `0 0 0` until `/proc/sys/kernel/task_delayacct` is 1 |
+| neither | `0 0 0`, always |
+
+The second case is the common one on a distribution kernel, which
+compiles in `CONFIG_TASK_DELAY_ACCT` without `CONFIG_SCHEDSTATS` and
+leaves the `delayacct` toggle off by default. The file then reads `0 0 0`
+and the preemption is reported as zero — on a machine where the threads
+were preempted constantly.
+
+**A zero preemption is a measurement, and there it is a false one.** So
+the SDK detects whether the kernel is collecting the statistics, and when
+it is not the sample does not claim the split at all: the absence of a
+measurement is reported as an absence, and never as a confident zero.
+
+Measured on a CI runner: the preemption was reported as zero while perf's
+own `sch delay` said 88 % of the wall time had been lost to the run
+queue. The two now agree, and where the kernel does not collect the
+statistics, neither number is claimed.
+
+**Permission.** None to read the file. The toggle needs root, but the
+toggle is a machine-wide setting and not something PACE changes on a
+customer's machine.
 
 **Cost.** 244–265 ns for a `pread` of the cached descriptor; 1523–1639 ns
 if the file is opened and closed each time.
