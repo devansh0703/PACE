@@ -100,6 +100,7 @@ int main(int argc, char **argv) {
           stats.ebpf_available ? "attached" : "not available", stats.samples_taken,
           stats.degraded_samples);
 
+
   pace_session_destroy(session);
   free(workers);
   free(threads);
