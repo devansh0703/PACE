@@ -13,6 +13,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#if defined(_WIN32)
+#  include <windows.h>
+#endif
 #include <unistd.h>
 
 static int g_failures = 0;
@@ -143,6 +146,25 @@ static void test_first_sample_is_baseline(void) {
   pace_session_destroy(s);
 }
 
+/* A monotonic clock for the test's own timing.
+ *
+ * The test includes only the public header, so the library's internal
+ * clock is not available, and clock_gettime is not on every platform the
+ * test builds for. This is a small clock of the test's own, and it only
+ * has to be monotonic and in nanoseconds. */
+static uint64_t test_monotonic_ns(void) {
+#if defined(_WIN32)
+  LARGE_INTEGER frequency, counter;
+  QueryPerformanceFrequency(&frequency);
+  QueryPerformanceCounter(&counter);
+  return (uint64_t)((counter.QuadPart * 1000000000ll) / frequency.QuadPart);
+#else
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+#endif
+}
+
 static void test_decomposition_invariant(void) {
   pace_config cfg;
   pace_config_init(&cfg);
@@ -152,9 +174,23 @@ static void test_decomposition_invariant(void) {
   pace_sample a;
   CHECK(pace_session_sample_self(s, &a) == PACE_OK, "baseline sample ok");
 
-  /* Burn some CPU so the window is non-trivial. */
+  /* Burn some CPU so the window is non-trivial.
+   *
+   * The loop runs until the wall clock has moved by a millisecond rather
+   * than a fixed number of iterations. A fixed count is not enough on
+   * every platform: Windows reports a thread's CPU time in 100 ns units,
+   * so a loop that finishes inside one tick of the system clock reports
+   * no on-CPU time at all, and the test fails for a reason that has
+   * nothing to do with the library. */
+  /* The window has to be longer than the coarsest tick of any supported
+   * platform's thread-CPU clock. Windows reports a thread's CPU time in
+   * 100 ns units, but Wine's GetThreadTimes updates it in about 10 ms
+   * steps, and a 2 ms window would show no on-CPU time at all. */
+  uint64_t burn_start = test_monotonic_ns();
   volatile unsigned long long acc = 0;
-  for (unsigned long long i = 0; i < 20000000ull; i++) acc += i;
+  while (test_monotonic_ns() - burn_start < 100000000ull) {
+    for (unsigned long long i = 0; i < 100000ull; i++) acc += i;
+  }
   (void)acc;
 
   pace_sample b;
