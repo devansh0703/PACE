@@ -165,7 +165,7 @@ jobs:
       - name: Install the dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm libbpf-dev linux-tools-generic python3-pip
+          sudo apt-get install -y clang llvm libbpf-dev linux-tools-generic
 
       - name: Build the SDK
         working-directory: pace-sdk
@@ -177,7 +177,9 @@ jobs:
       - name: Run the accuracy harness
         working-directory: pace-sdk
         run: |
-          python3 -m pip install --break-system-packages --user numpy
+          # The harness imports nothing outside the standard library, so
+          # there is nothing to install. It runs the SDK's in-process
+          # verifier and compares against the kernel's own accounting.
           python3 tests/verify/verify_accuracy.py \
             --repetitions 30 \
             --duration-ms 400 \
