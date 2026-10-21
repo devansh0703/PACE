@@ -1,0 +1,3 @@
+# product repos are independent git repositories
+/pace-sdk/
+/pace-analyzer/
