@@ -5,7 +5,7 @@
 //! Nothing here invents data: a field the source format does not carry stays
 //! at its default.
 
-use crate::model::{Sample, Source, ThreadTrace, Trace};
+use crate::model::{Sample, Source, ThreadAttribution, ThreadTrace, Trace, VerifyReport};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
@@ -58,13 +58,35 @@ impl Format {
     }
 }
 
-/// Parse a trace file in the given format.
+/// Parse a trace file in the given format, keeping every sample.
+///
+/// Use this when the individual samples are wanted: `inspect` prints
+/// them, and `convert` rewrites them. The memory is proportional to the
+/// number of samples.
 pub fn parse_file(path: &Path, format: Format) -> crate::Result<Trace> {
+    parse_with(path, format, true)
+}
+
+/// Parse a trace file in the given format, keeping only the aggregates.
+///
+/// The file is read line by line and each sample is folded into its
+/// thread's aggregate and then dropped, so the memory is proportional
+/// to the number of threads rather than the number of samples. A trace
+/// of ten million samples is a gigabyte of `Sample` structs; this needs
+/// kilobytes.
+///
+/// The numbers are identical to those from [`parse_file`], because the
+/// fold is the same one the batch aggregator uses.
+pub fn parse_summarised(path: &Path, format: Format) -> crate::Result<Trace> {
+    parse_with(path, format, false)
+}
+
+fn parse_with(path: &Path, format: Format, retain_samples: bool) -> crate::Result<Trace> {
     match format {
-        Format::Pace => parse_pace_jsonl(path),
-        Format::Chrome => parse_chrome_trace(path),
-        Format::PerfSched => parse_perf_sched(path),
-        Format::PerfTrace => parse_perf_trace(path),
+        Format::Pace => parse_pace_jsonl(path, retain_samples),
+        Format::Chrome => parse_chrome_trace(path, retain_samples),
+        Format::PerfSched => parse_perf_sched(path, retain_samples),
+        Format::PerfTrace => parse_perf_trace(path, retain_samples),
     }
 }
 
@@ -78,10 +100,13 @@ pub fn parse_file(path: &Path, format: Format) -> crate::Result<Trace> {
 /// whole parse: a trace captured under stress is routinely truncated at the
 /// end, and the readable part is still worth analysing. The count lands in
 /// [`Trace::malformed_lines`].
-pub fn parse_pace_jsonl(path: &Path) -> crate::Result<Trace> {
+pub fn parse_pace_jsonl(path: &Path, retain_samples: bool) -> crate::Result<Trace> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
-    let mut trace = Trace::default();
+    let mut trace = Trace {
+        retain_samples,
+        ..Default::default()
+    };
     let mut index: HashMap<u64, usize> = HashMap::new();
 
     for line in reader.lines() {
@@ -123,17 +148,7 @@ pub fn parse_pace_jsonl(path: &Path) -> crate::Result<Trace> {
             sample.flags |= crate::model::FLAG_HAS_PREEMPTED | crate::model::FLAG_HAS_BLOCKED;
         }
 
-        match index.get(&tid) {
-            Some(&position) => trace.threads[position].samples.push(sample),
-            None => {
-                index.insert(tid, trace.threads.len());
-                trace.threads.push(ThreadTrace {
-                    tid,
-                    name: None,
-                    samples: vec![sample],
-                });
-            }
-        }
+        push_sample(&mut trace, &mut index, tid, sample);
     }
 
     Ok(trace)
@@ -144,7 +159,7 @@ pub fn parse_pace_jsonl(path: &Path) -> crate::Result<Trace> {
 /// Chrome trace events carry the thread state in the event name and the
 /// duration in `dur` (microseconds). PACE-specific attribution is read from
 /// `args` when present.
-pub fn parse_chrome_trace(path: &Path) -> crate::Result<Trace> {
+pub fn parse_chrome_trace(path: &Path, retain_samples: bool) -> crate::Result<Trace> {
     let text = std::fs::read_to_string(path)?;
     let value: serde_json::Value = serde_json::from_str(&text)
         .map_err(|e| crate::Error::Parse(format!("invalid JSON: {}", e)))?;
@@ -166,7 +181,10 @@ pub fn parse_chrome_trace(path: &Path) -> crate::Result<Trace> {
         }
     };
 
-    let mut trace = Trace::default();
+    let mut trace = Trace {
+        retain_samples,
+        ..Default::default()
+    };
     let mut index: HashMap<u64, usize> = HashMap::new();
 
     for event in events {
@@ -199,17 +217,7 @@ pub fn parse_chrome_trace(path: &Path) -> crate::Result<Trace> {
             sample.flags |= crate::model::FLAG_HAS_PREEMPTED | crate::model::FLAG_HAS_BLOCKED;
         }
 
-        match index.get(&tid) {
-            Some(&position) => trace.threads[position].samples.push(sample),
-            None => {
-                index.insert(tid, trace.threads.len());
-                trace.threads.push(ThreadTrace {
-                    tid,
-                    name: None,
-                    samples: vec![sample],
-                });
-            }
-        }
+        push_sample(&mut trace, &mut index, tid, sample);
     }
 
     Ok(trace)
@@ -232,10 +240,13 @@ pub fn parse_chrome_trace(path: &Path) -> crate::Result<Trace> {
 /// `wait time` and `sch delay` overlap in perf's accounting, so the analyzer
 /// uses `sch delay` as the preemption bucket and `run time` as the on-CPU
 /// bucket, and takes the blocked time as the remainder of the wall window.
-pub fn parse_perf_sched(path: &Path) -> crate::Result<Trace> {
+pub fn parse_perf_sched(path: &Path, retain_samples: bool) -> crate::Result<Trace> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
-    let mut trace = Trace::default();
+    let mut trace = Trace {
+        retain_samples,
+        ..Default::default()
+    };
     let mut index: HashMap<u64, usize> = HashMap::new();
     let mut previous_end_ns: HashMap<u64, u64> = HashMap::new();
 
@@ -309,17 +320,7 @@ pub fn parse_perf_sched(path: &Path) -> crate::Result<Trace> {
             phase: None,
         };
 
-        match index.get(&tid) {
-            Some(&position) => trace.threads[position].samples.push(sample),
-            None => {
-                index.insert(tid, trace.threads.len());
-                trace.threads.push(ThreadTrace {
-                    tid,
-                    name: None,
-                    samples: vec![sample],
-                });
-            }
-        }
+        push_sample(&mut trace, &mut index, tid, sample);
     }
 
     Ok(trace)
@@ -330,10 +331,13 @@ pub fn parse_perf_sched(path: &Path) -> crate::Result<Trace> {
 /// The CSV has a header row and columns for timestamp, CPU, event, symbol
 /// and arguments. Thread context-switch events (`sched_switch`) are the ones
 /// that carry scheduler information.
-pub fn parse_perf_trace(path: &Path) -> crate::Result<Trace> {
+pub fn parse_perf_trace(path: &Path, retain_samples: bool) -> crate::Result<Trace> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
-    let mut trace = Trace::default();
+    let mut trace = Trace {
+        retain_samples,
+        ..Default::default()
+    };
     let mut index: HashMap<u64, usize> = HashMap::default();
     // When each thread last stopped running, so the next switch can close
     // its on-CPU interval.
@@ -455,14 +459,62 @@ fn perf_trace_arg(args: &str, name: &str) -> Option<u64> {
 /// Append a sample to a thread, creating the thread if it is new.
 fn push_sample(trace: &mut Trace, index: &mut HashMap<u64, usize>, tid: u64, sample: Sample) {
     match index.get(&tid) {
-        Some(&position) => trace.threads[position].samples.push(sample),
+        Some(&position) => {
+            let thread = &mut trace.threads[position];
+            if trace.retain_samples {
+                thread.samples.push(sample);
+            } else {
+                let summary = thread.summary.get_or_insert_with(|| ThreadAttribution {
+                    tid: thread.tid,
+                    name: thread.name.clone(),
+                    ..Default::default()
+                });
+                summary.fold(&sample);
+                fold_verification(thread, &sample);
+            }
+        }
         None => {
             index.insert(tid, trace.threads.len());
-            trace.threads.push(ThreadTrace {
+            let mut thread = ThreadTrace {
                 tid,
                 name: None,
-                samples: vec![sample],
-            });
+                samples: Vec::new(),
+                summary: None,
+                summary_verify: None,
+            };
+            if trace.retain_samples {
+                thread.samples.push(sample);
+            } else {
+                let mut summary = ThreadAttribution {
+                    tid,
+                    name: None,
+                    ..Default::default()
+                };
+                summary.fold(&sample);
+                thread.summary = Some(summary);
+                fold_verification(&mut thread, &sample);
+            }
+            trace.threads.push(thread);
         }
+    }
+}
+
+/// Fold one sample's decomposition check into a thread's verification.
+///
+/// A summarised trace checks the invariant as it reads, so the report
+/// can say whether the decomposition held. It must not say "exact" for a
+/// trace it never checked.
+fn fold_verification(thread: &mut ThreadTrace, sample: &Sample) {
+    let report = thread
+        .summary_verify
+        .get_or_insert_with(VerifyReport::default);
+    report.total_samples += 1;
+    let error = sample.balance_error_ns();
+    if error > 0 {
+        report.violations += 1;
+    }
+    if error > report.worst_error_ns {
+        report.worst_error_ns = error;
+        report.worst = Some((thread.tid, report.total_samples - 1));
     }
 }

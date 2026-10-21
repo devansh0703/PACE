@@ -79,7 +79,14 @@ enum Command {
     },
 }
 
-fn load(path: &Path, format: Option<Format>) -> Result<Trace> {
+/// Load a trace file.
+///
+/// `retain_samples` is false for the commands that only need the
+/// aggregate. A trace of ten million samples is a gigabyte of sample
+/// structs, and the analysis needs only the sums, so the summarised
+/// path reads the file line by line and drops each sample after folding
+/// it in.
+fn load(path: &Path, format: Option<Format>, retain_samples: bool) -> Result<Trace> {
     // The file must be readable before anything else is attempted, so a
     // missing or unreadable file is reported as what it is rather than as a
     // format problem.
@@ -94,12 +101,22 @@ fn load(path: &Path, format: Option<Format>) -> Result<Trace> {
         None => parsers::Format::detect(path)
             .map_err(|_| PaceError::FormatUnknown(path.display().to_string()))?,
     };
-    let trace = parsers::parse_file(path, format).map_err(|e| match e {
+    let parse = if retain_samples {
+        parsers::parse_file(path, format)
+    } else {
+        parsers::parse_summarised(path, format)
+    };
+    let trace = parse.map_err(|e| match e {
         PaceError::Io(io) => PaceError::Io(io),
         PaceError::Parse(detail) => PaceError::Parse(detail),
         other => PaceError::Parse(other.to_string()),
     })?;
-    if trace.threads.iter().all(|t| t.samples.is_empty()) {
+    // A trace with no samples at all is empty, whichever way it was read.
+    let empty = trace
+        .threads
+        .iter()
+        .all(|t| t.samples.is_empty() && t.summary.as_ref().is_none_or(|s| s.sample_count == 0));
+    if empty {
         return Err(PaceError::Empty);
     }
     Ok(trace)
@@ -142,7 +159,9 @@ fn run(cli: Cli) -> Result<()> {
             preempted_threshold,
             blocked_threshold,
         } => {
-            let trace = load(&trace, format)?;
+            // Only the aggregate is needed, so the samples are folded and
+            // dropped as the file is read.
+            let trace = load(&trace, format, false)?;
             let thresholds = Thresholds {
                 preempted_fraction: preempted_threshold / 100.0,
                 blocked_fraction: blocked_threshold / 100.0,
@@ -172,7 +191,8 @@ fn run(cli: Cli) -> Result<()> {
             }
         }
         Command::Inspect { trace, format } => {
-            let trace = load(&trace, format)?;
+            // Every sample is printed, so they are all retained.
+            let trace = load(&trace, format, true)?;
             for thread in &trace.threads {
                 println!("thread {} ({} samples)", thread.tid, thread.samples.len());
                 for (index, sample) in thread.samples.iter().enumerate() {
@@ -189,7 +209,11 @@ fn run(cli: Cli) -> Result<()> {
             }
         }
         Command::Verify { trace, format } => {
-            let trace = load(&trace, format)?;
+            // The samples are kept: the invariant is checked on every one
+            // of them, and a summarised trace has none to check. Summing
+            // the check would report zero violations on every trace,
+            // which is a false green in a CI gate.
+            let trace = load(&trace, format, true)?;
             let report = trace.verify();
             // An empty trace satisfies the invariant vacuously. Reporting
             // that as a pass would be a false green in a CI gate, so an empty
@@ -226,7 +250,8 @@ fn run(cli: Cli) -> Result<()> {
             output,
             format,
         } => {
-            let trace = load(&input, format)?;
+            // Every sample is rewritten, so they are all retained.
+            let trace = load(&input, format, true)?;
             let text = match to {
                 Format::Pace => pace_jsonl(&trace),
                 Format::Chrome => chrome_json(&trace),

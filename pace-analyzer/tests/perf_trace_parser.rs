@@ -44,7 +44,7 @@ fn a_real_perf_trace_line_is_parsed() {
         ],
     );
 
-    let trace: Trace = parse_perf_trace(&path).expect("the trace must parse");
+    let trace: Trace = parse_perf_trace(&path, true).expect("the trace must parse");
 
     // A sched_switch at time T says "prev was running until T, next runs
     // from T". So thread 11 ran from 0 ms to 500 ms and thread 12 ran from
@@ -85,7 +85,7 @@ fn the_perf_trace_timestamps_are_milliseconds() {
         &[line("0.000", 10, 11), line("1000.000", 11, 10)],
     );
 
-    let trace = parse_perf_trace(&path).expect("the trace must parse");
+    let trace = parse_perf_trace(&path, true).expect("the trace must parse");
     let total: u64 = trace
         .threads
         .iter()
@@ -106,7 +106,7 @@ fn a_perf_trace_carries_no_preemption_split() {
         &[line("0.000", 10, 11), line("0.500", 11, 10)],
     );
 
-    let trace = parse_perf_trace(&path).expect("the trace must parse");
+    let trace = parse_perf_trace(&path, true).expect("the trace must parse");
     for thread in &trace.threads {
         for sample in &thread.samples {
             assert!(
@@ -138,7 +138,7 @@ fn a_perf_trace_with_a_comm_containing_a_slash_still_parses() {
     )
     .expect("cannot write");
 
-    let trace = parse_perf_trace(&path).expect("the trace must parse");
+    let trace = parse_perf_trace(&path, true).expect("the trace must parse");
     // The thread id is read from prev_pid, not by splitting the comm/pid
     // field, so a comm containing a slash cannot corrupt it. The only
     // thread with a closed interval is 88, which ran from 0 ms to 250 ms.
@@ -174,7 +174,7 @@ fn a_line_that_is_not_a_sched_switch_is_skipped() {
         ],
     );
 
-    let trace = parse_perf_trace(&path).expect("the trace must parse");
+    let trace = parse_perf_trace(&path, true).expect("the trace must parse");
     // The syscall event carries no attribution and must not become a sample.
     // The first switch has no known start for thread 10, and the third
     // closes thread 11's interval, so one sample is produced.

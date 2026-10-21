@@ -11,7 +11,7 @@ $ pace analyze trace.jsonl
 PACE thread attribution
 ======================
 
-samples: 106023 across 48 threads   decomposition: exact
+samples: 106180 across 48 threads   decomposition: exact
 
 thread           on_cpu    preempted      blocked preempt%   switches  core cycles
 ----------------------------------------------------------------------------------
@@ -64,7 +64,28 @@ inline SVG, so there is no charting library to load.
 | PACE JSONL | the `pace-sdk` writer |
 | Chrome Trace Event | the standard trace format |
 | `perf sched timehist` | perf's scheduling analysis |
-| `perf trace` CSV | perf's event trace |
+| `perf trace` | perf's event trace, in its own text format |
+
+## Memory
+
+`analyze` and `verify` read the trace line by line and fold each sample
+into its thread's aggregate, so the memory is proportional to the number
+of **threads**, not the number of samples. A trace of ten million samples
+is a gigabyte of sample structs; the analysis needs kilobytes.
+
+Measured on a 101,625-sample trace over 48 threads:
+
+| Command | Peak resident |
+|---|---|
+| `analyze` | 3.4 MB |
+| `inspect` | 16.8 MB |
+
+`inspect` keeps every sample, because it prints them, and `convert` keeps
+them because it rewrites them. The two paths produce the same numbers:
+`tests/summarised_agreement.rs` checks that the aggregate of a
+summarised trace and the aggregate of a retained one agree on every
+total, every thread and every phase, and that the decomposition check
+agrees too.
 
 ## What it will not do
 

@@ -304,7 +304,7 @@ Each step ends with something runnable and committed.
 - eBPF-based continuous production profiling — a different buyer with different requirements.
 - A hosted SaaS offering — the brief's vehicle is licensing to tool vendors.
 - Windows and macOS three-way splits without privilege — documented as a limitation rather than faked.
-- A streaming analyzer mode for traces above ~10 M samples — deferred with a documented limit.
+- A streaming analyzer mode for traces above ~10 M samples — **DONE.** `analyze` and `verify` read the trace line by line and fold each sample into its thread's aggregate, so the memory is proportional to the number of threads and not the number of samples. Measured on a 101,625-sample trace: 3.4 MB against 16.8 MB for the retaining path. The two paths produce the same numbers, and `tests/summarised_agreement.rs` checks that they agree on every total, every thread, every phase and the decomposition check. The summarised path checks the invariant as it reads, so the report never says "exact" for a trace it did not check.
 
 ### 8. Binding decisions
 

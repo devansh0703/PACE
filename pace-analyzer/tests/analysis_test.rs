@@ -64,6 +64,8 @@ fn verify_counts_violations() {
             tid: 1,
             name: None,
             samples: vec![sample(100, 40, 50, 10), sample(100, 40, 50, 5)],
+            summary: None,
+            summary_verify: None,
         }],
         reference_hz: None,
         ..Default::default()
@@ -81,6 +83,8 @@ fn verify_passes_on_a_balanced_trace() {
             tid: 1,
             name: None,
             samples: vec![sample(100, 40, 50, 10)],
+            summary: None,
+            summary_verify: None,
         }],
         reference_hz: None,
         ..Default::default()
@@ -95,6 +99,8 @@ fn analysis_aggregates_per_thread() {
             tid: 7,
             name: Some("worker".to_string()),
             samples: vec![sample(100, 40, 50, 10), sample(100, 60, 30, 10)],
+            summary: None,
+            summary_verify: None,
         }],
         reference_hz: None,
         ..Default::default()
@@ -118,6 +124,8 @@ fn analysis_raises_a_finding_for_a_preempted_thread() {
             tid: 9,
             name: None,
             samples: vec![sample(100, 10, 80, 10)],
+            summary: None,
+            summary_verify: None,
         }],
         reference_hz: None,
         ..Default::default()
@@ -140,6 +148,8 @@ fn analysis_raises_a_process_level_finding() {
             tid: 1,
             name: None,
             samples: vec![sample(100, 10, 80, 10)],
+            summary: None,
+            summary_verify: None,
         }],
         reference_hz: None,
         ..Default::default()
@@ -159,6 +169,8 @@ fn analysis_keeps_phase_attribution() {
             tid: 1,
             name: None,
             samples: vec![a, b],
+            summary: None,
+            summary_verify: None,
         }],
         reference_hz: None,
         ..Default::default()
@@ -242,6 +254,8 @@ fn html_report_contains_the_numbers() {
             tid: 42,
             name: None,
             samples: vec![sample(1_000_000, 250_000, 600_000, 150_000)],
+            summary: None,
+            summary_verify: None,
         }],
         reference_hz: None,
         ..Default::default()
@@ -264,6 +278,8 @@ fn terminal_report_lists_the_thread() {
             tid: 5,
             name: None,
             samples: vec![sample(1_000_000, 250_000, 600_000, 150_000)],
+            summary: None,
+            summary_verify: None,
         }],
         reference_hz: None,
         ..Default::default()
@@ -283,6 +299,8 @@ fn a_thread_without_attribution_raises_no_finding() {
             tid: 3,
             name: None,
             samples: vec![sample_without_attribution(1_000_000)],
+            summary: None,
+            summary_verify: None,
         }],
         reference_hz: None,
         ..Default::default()
@@ -338,6 +356,8 @@ fn a_thread_with_attribution_still_raises_a_finding() {
             tid: 3,
             name: None,
             samples: vec![sample(1_000_000, 100_000, 800_000, 100_000)],
+            summary: None,
+            summary_verify: None,
         }],
         reference_hz: None,
         ..Default::default()
@@ -395,6 +415,8 @@ fn the_html_report_flags_a_partial_trace() {
             tid: 1,
             name: None,
             samples: vec![sample(100, 40, 50, 10)],
+            summary: None,
+            summary_verify: None,
         }],
         reference_hz: None,
         ..Default::default()

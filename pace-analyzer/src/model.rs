@@ -96,7 +96,26 @@ pub struct ThreadTrace {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     /// The samples for this thread, in time order.
+    ///
+    /// Empty when the trace was parsed in summarised mode, which folds
+    /// each sample into `summary` and drops it.
     pub samples: Vec<Sample>,
+    /// The aggregate for this thread, when the samples were not retained.
+    ///
+    /// `None` means the samples are retained and the aggregate is
+    /// computed from them. `Some` means the trace was parsed in
+    /// summarised mode and this is the aggregate that was folded as the
+    /// trace was read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<ThreadAttribution>,
+    /// The verification of the decomposition invariant over this thread's
+    /// samples, when the samples were not retained.
+    ///
+    /// A summarised trace checks the invariant as it reads, so the report
+    /// can still say whether the decomposition held -- it must not say
+    /// "exact" for a trace it never checked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary_verify: Option<VerifyReport>,
 }
 
 impl ThreadTrace {
@@ -107,7 +126,10 @@ impl ThreadTrace {
     /// is not a measurement of "no preemption", so the report says the
     /// attribution was unavailable rather than showing a 0 % figure.
     pub fn has_attribution(&self) -> bool {
-        self.samples.iter().any(|s| s.has_attribution())
+        match &self.summary {
+            Some(summary) => summary.has_attribution,
+            None => self.samples.iter().any(|s| s.has_attribution()),
+        }
     }
 }
 
@@ -128,6 +150,15 @@ pub struct Trace {
     /// knows what was dropped.
     #[serde(default)]
     pub malformed_lines: usize,
+    /// True when the samples were retained, false when the trace was
+    /// summarised.
+    ///
+    /// A summarised trace has the aggregate in each thread's `summary` and
+    /// no samples. The flag is not serialised: it describes how the trace
+    /// was read, not what it contains, and a serialised trace always
+    /// carries its samples.
+    #[serde(skip)]
+    pub retain_samples: bool,
 }
 
 impl Trace {
@@ -147,13 +178,22 @@ impl Trace {
 
     /// The total number of samples in the trace.
     pub fn sample_count(&self) -> usize {
-        self.threads.iter().map(|t| t.samples.len()).sum()
+        self.threads
+            .iter()
+            .map(|t| match &t.summary {
+                Some(summary) => summary.sample_count,
+                None => t.samples.len(),
+            })
+            .sum()
     }
 
     /// Check the decomposition invariant across every sample.
     ///
     /// Returns the number of samples that violate `wall == on_cpu +
     /// preempted + blocked`.
+    ///
+    /// A summarised trace carries the result of the same check, made as
+    /// the trace was read, so the two paths agree.
     pub fn verify(&self) -> VerifyReport {
         let mut total = 0usize;
         let mut violations = 0usize;
@@ -161,15 +201,27 @@ impl Trace {
         let mut worst: Option<(u64, usize)> = None;
 
         for thread in &self.threads {
-            for (index, sample) in thread.samples.iter().enumerate() {
-                total += 1;
-                let error = sample.balance_error_ns();
-                if error > 0 {
-                    violations += 1;
+            match &thread.summary_verify {
+                Some(report) => {
+                    total += report.total_samples;
+                    violations += report.violations;
+                    if report.worst_error_ns > worst_error_ns {
+                        worst_error_ns = report.worst_error_ns;
+                        worst = report.worst;
+                    }
                 }
-                if error > worst_error_ns {
-                    worst_error_ns = error;
-                    worst = Some((thread.tid, index));
+                None => {
+                    for (index, sample) in thread.samples.iter().enumerate() {
+                        total += 1;
+                        let error = sample.balance_error_ns();
+                        if error > 0 {
+                            violations += 1;
+                        }
+                        if error > worst_error_ns {
+                            worst_error_ns = error;
+                            worst = Some((thread.tid, index));
+                        }
+                    }
                 }
             }
         }
@@ -184,7 +236,7 @@ impl Trace {
 }
 
 /// The result of checking the decomposition invariant.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VerifyReport {
     /// How many samples were checked.
     pub total_samples: usize,
@@ -252,6 +304,37 @@ pub struct PhaseAttribution {
 }
 
 impl ThreadAttribution {
+    /// Fold one sample into this thread's aggregate.
+    ///
+    /// This is the single place the arithmetic happens, so that the
+    /// streaming parser and the batch aggregator cannot disagree. A
+    /// trace analysed in a streaming pass and the same trace analysed
+    /// with every sample retained must produce the same numbers.
+    pub fn fold(&mut self, sample: &Sample) {
+        self.wall_ns += sample.wall_ns;
+        self.on_cpu_ns += sample.on_cpu_ns;
+        self.preempted_ns += sample.preempted_ns;
+        self.blocked_ns += sample.blocked_ns;
+        self.core_cycles += sample.core_cycles;
+        self.ref_cycles += sample.ref_cycles;
+        self.sample_count += 1;
+        self.involuntary_switches += sample.involuntary_switches;
+        self.voluntary_switches += sample.voluntary_switches;
+
+        if sample.has_attribution() {
+            self.has_attribution = true;
+        }
+
+        if let Some(phase) = &sample.phase {
+            let entry = self.phases.entry(phase.clone()).or_default();
+            entry.wall_ns += sample.wall_ns;
+            entry.on_cpu_ns += sample.on_cpu_ns;
+            entry.preempted_ns += sample.preempted_ns;
+            entry.blocked_ns += sample.blocked_ns;
+            entry.sample_count += 1;
+        }
+    }
+
     /// The fraction of wall time the thread spent on CPU, in 0.0..=1.0.
     pub fn on_cpu_fraction(&self) -> f64 {
         fraction(self.on_cpu_ns, self.wall_ns)
@@ -367,33 +450,26 @@ pub fn analyze(trace: &Trace, thresholds: &Thresholds) -> Analysis {
     let mut analysis = Analysis::default();
 
     for thread in &trace.threads {
-        let mut attribution = ThreadAttribution {
-            tid: thread.tid,
-            name: thread.name.clone(),
-            has_attribution: thread.has_attribution(),
-            ..Default::default()
-        };
-
-        for sample in &thread.samples {
-            attribution.wall_ns += sample.wall_ns;
-            attribution.on_cpu_ns += sample.on_cpu_ns;
-            attribution.preempted_ns += sample.preempted_ns;
-            attribution.blocked_ns += sample.blocked_ns;
-            attribution.core_cycles += sample.core_cycles;
-            attribution.ref_cycles += sample.ref_cycles;
-            attribution.sample_count += 1;
-            attribution.involuntary_switches += sample.involuntary_switches;
-            attribution.voluntary_switches += sample.voluntary_switches;
-
-            if let Some(phase) = &sample.phase {
-                let entry = attribution.phases.entry(phase.clone()).or_default();
-                entry.wall_ns += sample.wall_ns;
-                entry.on_cpu_ns += sample.on_cpu_ns;
-                entry.preempted_ns += sample.preempted_ns;
-                entry.blocked_ns += sample.blocked_ns;
-                entry.sample_count += 1;
+        // A trace parsed in summarised mode already carries the
+        // aggregate, and the samples were dropped to bound the memory.
+        // Otherwise the aggregate is computed from the samples, with
+        // the same fold, so the two paths cannot disagree.
+        let mut attribution = match &thread.summary {
+            Some(summary) => summary.clone(),
+            None => {
+                let mut attribution = ThreadAttribution {
+                    tid: thread.tid,
+                    name: thread.name.clone(),
+                    ..Default::default()
+                };
+                for sample in &thread.samples {
+                    attribution.fold(sample);
+                }
+                attribution
             }
-        }
+        };
+        attribution.tid = thread.tid;
+        attribution.name = thread.name.clone();
 
         analysis.total_wall_ns += attribution.wall_ns;
         analysis.total_on_cpu_ns += attribution.on_cpu_ns;

@@ -32,6 +32,8 @@ fn make_trace(threads: usize, samples_per_thread: usize) -> Trace {
             tid: t as u64,
             name: None,
             samples,
+            summary: None,
+            summary_verify: None,
         });
     }
     trace
