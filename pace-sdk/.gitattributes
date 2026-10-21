@@ -1,0 +1,9 @@
+# The vcpkg port describes the release archive, so it must not be part of
+# it. Excluding it here breaks the circular dependency: the port's SHA512
+# is the hash of a tarball that does not change when the portfile
+# changes.
+#
+# Without this, publishing a corrected hash would change the tarball it
+# describes, and the port would be broken for every installer.
+vcpkg/portfile.cmake export-ignore
+vcpkg.json export-ignore
