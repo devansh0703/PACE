@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! PACE analyzer — turn a trace into a per-thread time attribution.
 //!
 //! The analyzer answers one question: for each thread, how much of its wall

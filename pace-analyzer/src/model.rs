@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! The trace model: samples, threads, attribution and findings.
 
 use serde::{Deserialize, Serialize};

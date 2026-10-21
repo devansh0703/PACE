@@ -29,14 +29,14 @@ const nav = [
   <body>
     <nav>
       <div class="wrap">
-        <a class="brand" href="/">
+        <a class="brand" href="/PACE/analyzer/">
           <i class="ph ph-waveform" style="font-size:18px"></i>
           pace-analyzer
         </a>
         <div class="links">
           {nav.map((item) => <a href={item.href}>{item.label}</a>)}
           <a
-            href="https://github.com/devansh0703/pace-analyzer"
+            href="https://github.com/devansh0703/PACE"
             class="btn"
             style="padding:5px 12px;font-size:13px"
           >
@@ -66,7 +66,7 @@ const nav = [
             <i class="ph ph-terminal-window"></i>
             Install it
           </a>
-          <a class="btn" href="https://github.com/devansh0703/pace-analyzer">
+          <a class="btn" href="https://github.com/devansh0703/PACE">
             <i class="ph ph-github-logo"></i>
             Read the source
           </a>
@@ -119,15 +119,15 @@ findings
         <div class="grid-2">
           <div class="panel">
             <h3><i class="ph ph-cube"></i> From source</h3>
-            <pre><code>{`git clone https://github.com/devansh0703/pace-analyzer
-cd pace-analyzer
+            <pre><code>{`git clone https://github.com/devansh0703/PACE
+cd PACE/pace-analyzer
 cargo build --release
 ./target/release/pace --help`}</code></pre>
             <p>
-              No runtime dependencies beyond the Rust standard library. The JSON, CSV and
-              text parsing is hand-rolled against the formats' documented shapes rather
-              than pulled in as dependencies, so the binary stays small and the parsing
-              behaviour stays inspectable.
+              No runtime dependencies beyond the Rust standard library. The JSON and
+              perf text parsing is hand-rolled against the formats' documented shapes
+              rather than pulled in as dependencies, so the binary stays small and the
+              parsing behaviour stays inspectable.
             </p>
           </div>
           <div class="panel">
@@ -242,7 +242,7 @@ pace convert <in> --to pace|chrome`}</code></pre>
         <div class="callout">
           <div class="callout-title">Two products, one method</div>
           <p>
-            <a href="https://github.com/devansh0703/pace-sdk">pace-sdk</a> is the licensed
+            <a href="https://github.com/devansh0703/PACE">pace-sdk</a> is the licensed
             C and C++ library that produces the samples. This analyzer is the
             open-source consumer of them, and the proof that the attribution is real:
             it verifies the decomposition on every sample of a trace and refuses to
@@ -255,8 +255,8 @@ pace convert <in> --to pace|chrome`}</code></pre>
     <footer class="footer wrap">
       <span>pace-analyzer — Apache-2.0</span>
       <span>
-        <a href="https://github.com/devansh0703/pace-analyzer">Source</a> ·
-        <a href="https://github.com/devansh0703/pace-sdk">pace-sdk</a> ·
+        <a href="https://github.com/devansh0703/PACE">Source</a> ·
+        <a href="https://github.com/devansh0703/PACE">pace-sdk</a> ·
         <a href="https://perfetto.dev/docs/trace-event-format">Trace format</a>
       </span>
     </footer>

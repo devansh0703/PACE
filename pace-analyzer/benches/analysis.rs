@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! Benchmarks for the analyzer's hot paths.
 //!
 //! The attribution model runs over every sample in a trace, so it is the

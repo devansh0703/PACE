@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! Report rendering: a terminal report and a self-contained HTML report.
 //!
 //! The HTML report is one file with no network dependencies. The chart is

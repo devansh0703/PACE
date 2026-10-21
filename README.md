@@ -1,6 +1,6 @@
 # PACE
 
-**P**reemption-**A**ware **C**ycle **E**ngine — a portable, embeddable
+**P**reemption-**A**ware **T**ime **A**ttribution — a portable, embeddable
 measurement of where a thread's wall time actually went.
 
 Two products, from one idea
@@ -11,6 +11,9 @@ Two products, from one idea
 | **[pace-sdk](pace-sdk/)** | a licensed C and C++ library you link into your profiler | BUSL-1.1 |
 | **[pace-analyzer](pace-analyzer/)** | the open-source trace analyzer that proves the measurement | Apache-2.0 |
 | **[websites](websites/)** | the two product sites | — |
+
+The product sites are live: **[devansh0703.github.io/PACE](https://devansh0703.github.io/PACE/)**
+and **[the analyzer's site](https://devansh0703.github.io/PACE/analyzer/)**.
 
 ## The problem
 
@@ -83,7 +86,20 @@ method in [pace-sdk/docs/ACCURACY.md](pace-sdk/docs/ACCURACY.md).
 
 At 1000 samples per second per thread, tier 0 costs 0.05 % of a core.
 
-## Building
+## Installing
+
+```bash
+# vcpkg
+vcpkg install pace
+
+# or Conan
+conan install --requires=pace/0.1.0
+```
+
+Both install from the published release, so the version you get is the
+version that was measured.
+
+## Building from a checkout
 
 ```bash
 # the SDK
@@ -91,6 +107,9 @@ cd pace-sdk && cmake -S . -B build -G Ninja && cmake --build build -j 8 && ctest
 
 # the analyzer
 cd pace-analyzer && cargo build --release && cargo test --release
+
+# the sites
+cd websites/pace-sdk && npm ci && npm run build
 ```
 
 ## What is in this repository
@@ -105,13 +124,14 @@ docs/IDEA-BRIEF.md          the source brief
 docs/OS-PRIMITIVES.md       the OS primitives, and their measured costs
 docs/DEPENDENCY-ADOPTION.md what is adopted, and why
 docs/COMPETITIVE-AND-PRIOR-ART.md
-pace-sdk/                   product 1, its own repository
-pace-analyzer/              product 2, its own repository
-websites/                   the two product sites, its own repository
+pace-sdk/                   product 1: the C and C++ library
+pace-analyzer/              product 2: the Rust trace analyzer
+websites/                   the two product sites
 ```
 
-`pace-sdk`, `pace-analyzer` and `websites` are **separate git repositories**,
-so each can be published, licensed and versioned on its own.
+They are **one repository**, so the products ship together and the licences
+still differ per directory: `pace-sdk/` is BUSL-1.1 and `pace-analyzer/` is
+Apache-2.0.
 
 ## The honest positioning
 

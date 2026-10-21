@@ -35,7 +35,7 @@ const nav = [
   <body>
     <nav>
       <div class="wrap">
-        <a class="brand" href="/">
+        <a class="brand" href="/PACE/">
           <i class="ph ph-waveform" style="font-size:18px"></i>
           PACE
         </a>
@@ -321,6 +321,24 @@ const nav = [
 
         <div class="grid-2" style="margin-top:28px">
           <div class="panel">
+            <h3><i class="ph ph-download-simple"></i> Install it</h3>
+            <pre><code>{`# vcpkg
+vcpkg install pace
+
+# or Conan
+conan install --requires=pace/0.1.0
+
+# or CMake, from a checkout
+find_package(pace REQUIRED)
+target_link_libraries(your_target PRIVATE pace::pace)`}</code></pre>
+            <p>
+              The published release is what the package managers install from, so the
+              version you get is the version that was measured. The eBPF tier is a
+              separate feature: it needs privilege to attach tracepoints, and nothing
+              in tier 0 or tier 1 does.
+            </p>
+          </div>
+          <div class="panel">
             <h3><i class="ph ph-brackets-curly"></i> The whole C API</h3>
             <pre><code>{`pace_config cfg;
 pace_config_init(&cfg);
@@ -401,7 +419,7 @@ pace_session_sample(session, thread, &sample);
             <i class="ph ph-envelope-simple"></i>
             pace@devansh0703.dev
           </a>
-          <a class="btn" href="https://github.com/devansh0703/pace-analyzer">
+          <a class="btn" href="https://github.com/devansh0703/PACE">
             <i class="ph ph-github-logo"></i>
             The open-source analyzer
           </a>
@@ -412,8 +430,8 @@ pace_session_sample(session, thread, &sample);
     <footer class="footer wrap">
       <span>PACE — preemption-aware time attribution</span>
       <span>
-        <a href="https://github.com/devansh0703/pace-sdk">pace-sdk</a> ·
-        <a href="https://github.com/devansh0703/pace-analyzer">pace-analyzer</a> ·
+        <a href="https://github.com/devansh0703/PACE">pace-sdk</a> ·
+        <a href="https://github.com/devansh0703/PACE">pace-analyzer</a> ·
         <a href="https://perfetto.dev/docs/trace-event-format">Trace format</a>
       </span>
     </footer>

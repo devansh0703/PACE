@@ -29,13 +29,12 @@ vcpkg_download_distfile(ARCHIVE
 # truncated. The file is in the downloads directory, and vcpkg_download_
 # distfile sets ARCHIVE to the path it used, so that is the path to
 # extract from.
-vcpkg_extract_source_archive(EXTRACTED
+# vcpkg_extract_source_archive strips the archive's top-level directory,
+# so the extracted source is already at the root.
+vcpkg_extract_source_archive(SOURCE_PATH
   ARCHIVE "${ARCHIVE}"
 )
 
-# The asset carries the prefix "pace-sdk-<version>/", so the directory
-# that holds CMakeLists.txt is one level below where it was extracted.
-set(SOURCE_PATH "${EXTRACTED}/pace-sdk-${VERSION}")
 if(NOT EXISTS "${SOURCE_PATH}/CMakeLists.txt")
   message(FATAL_ERROR "the extracted asset has no CMakeLists.txt at ${SOURCE_PATH}")
 endif()

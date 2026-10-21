@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! Trace format parsers.
 //!
 //! Each parser turns an external trace format into the common [`Trace`] model.

@@ -1,0 +1,53 @@
+# Licences in this repository
+
+This repository holds two products with different licences, and the
+licence is chosen by the directory a file lives in.
+
+| Directory | Licence | What it is |
+|---|---|---|
+| `pace-sdk/` | **BUSL-1.1** | the C and C++ library a vendor links into their profiler |
+| `pace-analyzer/` | **Apache-2.0** | the open-source trace analyzer |
+| `websites/` | the site's own terms, see below | the two product sites |
+| `docs/`, `PLAN.md`, `scripts/` | **Apache-2.0** | the plan, the reviews and the checks |
+
+## pace-sdk — Business Source License 1.1
+
+The full text is in [`pace-sdk/LICENSE`](pace-sdk/LICENSE), with the
+parameters filled in. The rationale is in
+[`pace-sdk/LICENSING.md`](pace-sdk/LICENSING.md).
+
+In short: you may use the SDK for anything, including in a commercial
+product, provided that you do not sell the SDK itself as a competing
+product. The licence converts to Apache-2.0 after two years.
+
+## pace-analyzer — Apache 2.0
+
+The full text is in
+[`pace-analyzer/LICENSE`](pace-analyzer/LICENSE).
+
+## websites
+
+The product sites are marketing material for the two products above, and
+they carry no licence of their own: the code that builds them is Apache-2.0,
+and the trademarks and copy are the property of the project.
+
+## Everything else
+
+`docs/`, `PLAN.md` and `scripts/` are Apache-2.0. The reviews in `docs/`
+are the record of how the products were designed, and they are useful to
+anyone who wants to build the same thing.
+
+## A note on the boundary
+
+The boundary between the two products is deliberate and it is technical,
+not just legal.
+
+- `pace-analyzer/` **reads** a trace. It never links into a process. It is
+  Apache-2.0 because a tool that reads someone else's trace should not
+  need a commercial agreement.
+- `pace-sdk/` **links into** a vendor's running process, on their
+  customers' machines, inside a commercial product. It is BUSL-1.1
+  because a vendor who embeds it will be selling the result.
+
+The analyzer reads PACE's trace format, and PACE's writer emits Chrome
+Trace Event records, so the analyzer is useful with or without the SDK.

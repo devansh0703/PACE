@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! The `perf trace` parser, tested against the format perf actually emits.
 //!
 //! The parser was written against a CSV header that `perf trace` does not

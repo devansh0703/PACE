@@ -1,0 +1,110 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'websites/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+# The deployment needs write access to publish the gh-pages branch, so
+# the workflow must not be silently skipped on a pull request from a fork.
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build the sites
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: websites/*/package-lock.json
+
+      - name: Build the pace-sdk site
+        working-directory: websites/pace-sdk
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build the pace-analyzer site
+        working-directory: websites/pace-analyzer
+        run: |
+          npm ci
+          npm run build
+
+      - name: Check that no site contains a placeholder
+        working-directory: websites
+        run: |
+          if grep -rniE 'lorem ipsum|TODO|FIXME|placeholder text|coming soon' \
+               */dist --include='*.html'; then
+            echo "::error::a built page contains placeholder content"
+            exit 1
+          fi
+          echo "no placeholder content in the built sites"
+
+      - name: Check the sites against the design contract
+        working-directory: websites
+        run: python3 scripts/check_design_contract.py
+
+      - name: Check that the site's accuracy table matches the artifact
+        working-directory: websites
+        run: |
+          python3 scripts/check_site_accuracy.py
+
+      # Both sites land in one gh-pages branch. A project Pages site is
+      # served from /<repo>/, so the published tree has a PACE/
+      # directory at its root: the SDK's site at /PACE/ and the
+      # analyzer's site at /PACE/analyzer/, which are the bases their
+      # astro configs set.
+      - name: Assemble the site
+        run: |
+          rm -rf _site
+          mkdir -p _site/PACE/analyzer
+          cp -r websites/pace-sdk/dist/. _site/PACE/
+          cp -r websites/pace-analyzer/dist/. _site/PACE/analyzer/
+          echo "the published tree:"
+          find _site -maxdepth 3 -name "index.html" | sort
+
+      - name: Check that both pages use their own base path
+        run: |
+          # A page whose assets are referenced from the root would 404 on
+          # the deployed site, because the site is served from /PACE/.
+          if grep -qE '(src|href)="/_astro/' _site/PACE/index.html; then
+            echo "::error::the SDK's page references the root base path"
+            exit 1
+          fi
+          if grep -qE '(src|href)="/_astro/' _site/PACE/analyzer/index.html; then
+            echo "::error::the analyzer's page references the root base path"
+            exit 1
+          fi
+          grep -q '/PACE/analyzer/_astro/' _site/PACE/analyzer/index.html
+          echo "both pages use their own base path"
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-24.04
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

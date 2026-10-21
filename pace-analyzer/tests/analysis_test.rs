@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! Tests for the analyzer's attribution model and parsers.
 
 use pace_analyzer::model::{

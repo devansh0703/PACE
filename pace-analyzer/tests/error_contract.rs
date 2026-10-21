@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! The agent-ready error contract.
 //!
 //! Every error the tool can produce must carry a stable code, a fix the
