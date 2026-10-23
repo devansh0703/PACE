@@ -1,0 +1,173 @@
+---
+import Base from '../layouts/Base.astro';
+import { site, href } from '../data/site';
+import { decomposition, measurements, environment, fine } from '../data/measurements';
+import GapDiagram from '../components/charts/GapDiagram.astro';
+import DecompositionFigure from '../components/charts/DecompositionFigure.astro';
+
+const cfs = measurements.find((m) => m.short === 'on-CPU vs schedstat')!;
+---
+
+<Base
+  title="About — PACE"
+  description="One maintainer, one open repository, and a free instance of the analyzer running on a free host. What that means for you, including what it does not."
+>
+  <div class="wrap">
+    <section class="hero">
+      <div class="section-label">About</div>
+      <h1>One maintainer, one repository, and a service that costs nothing to use</h1>
+      <p class="lede">
+        PACE is built by <strong>{site.author}</strong>. It is not a company, there is no commercial
+        licence to buy, and there is nothing on this site that is gated behind one. The library, the
+        analyzer and the service are all here, and the fastest way to get an answer about any of them
+        is to email me directly.
+      </p>
+      <p class="lede">
+        The reason it is built this way is simple: a measurement is only worth as much as somebody
+        else's ability to check it. A library you cannot read the source of, and a number you cannot
+        re-run, is a claim. Everything about how this project is published follows from trying not to
+        make claims.
+      </p>
+      <div class="cta-row">
+        <a class="btn primary" href={`mailto:${site.contact}`}>
+          <i class="ph ph-envelope-simple"></i>
+          {site.contact}
+        </a>
+        <a class="btn" href={site.repo}>
+          <i class="ph ph-github-logo"></i>
+          The repository
+        </a>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">What the project is for</div>
+      <h2>A wrong optimisation is expensive; knowing which one not to make is cheap</h2>
+      <p>
+        The whole reason this exists is the figure below. A thread that lost a large part of its wall
+        time to the scheduler is not a code problem, and every hour spent optimising the code inside
+        it is an hour spent on nothing. That mistake is invisible to a CPU-time counter, which is why
+        it gets made.
+      </p>
+      <GapDiagram />
+      <DecompositionFigure />
+    </section>
+
+    <section>
+      <div class="section-label">How it is published</div>
+      <h2>Source-available, free to use, and verifiable</h2>
+      <div class="grid-2">
+        <div class="panel">
+          <h3><i class="ph ph-github-logo"></i> Everything is in the open</h3>
+          <p>
+            The library, the analyzer, the verification harness, the raw measurement artifacts, the
+            review documents that corrected the positioning, and the scripts that fail the build when
+            a number on this site drifts from a measurement.
+          </p>
+          <p>
+            The one thing worth reading before anything else is
+            {' '}<a href={`${site.repo}/blob/main/docs/ENG-REVIEW.md`}>the engineering review</a>: it
+            records the two defects the verification harness found in the product itself, which is a
+            more useful document than a changelog.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-scales"></i> The licences, without euphemism</h3>
+          <p>
+            The analyzer is <strong>Apache-2.0</strong> — OSI open source, no conditions beyond
+            attribution, and it is deliberately the free half: it is how you check the method before
+            you trust anything.
+          </p>
+          <p>
+            The library is <strong>BUSL-1.1</strong>, which is source-available rather than open
+            source: reading it, modifying it and developing against it are free, production use of a
+            shipped product needs terms, and it converts to Apache-2.0 on 2030-11-01. Full text
+            on <a href={href('license/')}>the licence page</a>.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">The hosted service</div>
+      <h2>Why there is one, and exactly what it is</h2>
+      <p>
+        The analyzer is a Rust binary. To see what PACE says about a trace you would otherwise need a
+        toolchain, a clone and a build, which is a lot of commitment for one question. So the same
+        binary runs behind an HTTP endpoint that anybody can call without an account.
+      </p>
+      <div class="grid-3">
+        <div class="panel">
+          <h3><i class="ph ph-cloud"></i> One instance, on a free host</h3>
+          <p>
+            A single free instance with a tenth of a core and half a gigabyte of memory. It sleeps
+            when idle and takes about a minute to wake, and an uptime monitor pings it every five
+            minutes so that it usually does not.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-database-slash"></i> Nothing is stored</h3>
+          <p>
+            The trace is read into memory for one request and then dropped. There is no database and
+            no persistent disk on the host, so there is nowhere for it to be kept even by accident.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-code"></i> It is the same code</h3>
+          <p>
+            The container definition and the host's own service manifest are in the repository. You
+            can deploy the identical thing yourself, and that is the intended path if you use this
+            regularly.
+          </p>
+        </div>
+      </div>
+      <div class="callout">
+        <div class="callout-title">What the free instance means in practice</div>
+        <p>
+          A large trace will time out here and would not on your machine, and one request is served at
+          a time. Neither is a property of the measurement. If you hit either, run
+          {' '}<span class="mono">pace analyze</span> locally — it is one cargo build, and it is the
+          tool the service is calling.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">Maintenance, honestly</div>
+      <h2>What this is not</h2>
+      <div class="card-row">
+        <div class="panel">
+          <h3><i class="ph ph-user"></i> Not a team</h3>
+          <p>
+            One person. Issues get answered, but not on a service-level agreement, and there is no
+            support contract to buy. If the repository looks abandoned, it is probably a week of
+            something else and an email will resolve it.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-buildings"></i> Not a business</h3>
+          <p>
+            There is no pricing page, no sales motion and no paid tier. This is a measurement
+            published with the code that produces it, and the hosting is free because the free tier
+            of a host is enough for it.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-flask"></i> A measurement with an author</h3>
+          <p>
+            Every figure was produced on one machine by one person. The artifacts, the harness and the
+            environment are all published so you can decide how much weight that deserves — and so
+            that re-running it on your hardware is a command rather than a request.
+          </p>
+        </div>
+      </div>
+      <p>
+        The tightest published agreement, for reference: on-CPU time against the kernel's own
+        accounting at {fine(cfs.median)} median, on {environment.cpu_model} running
+        {' '}<span class="mono">{environment.uname}</span>, whose source is
+        {' '}<a href={`${site.repo}/blob/main/pace-sdk/results/accuracy.json`}>the committed
+        artifact</a> and not this paragraph.
+      </p>
+    </section>
+  </div>
+</Base>

@@ -6,6 +6,10 @@ how much was lost to OS preemption, and how much was blocked?**
 
 Open source, Apache-2.0.
 
+This is the analyzer half of one product. The library that produces the samples
+is [`../pace-sdk`](../pace-sdk/), and the hosted analyzer that runs this binary
+over HTTP is [`../service`](../service/). One model of time, three ways in.
+
 ```
 $ pace analyze trace.jsonl
 PACE thread attribution
@@ -57,6 +61,21 @@ a vacuous pass is a false green.
 opens offline with nothing to fetch. The per-thread split is drawn as
 inline SVG, so there is no charting library to load.
 
+The report carries four charts, all inline SVG for the same reason:
+
+| Figure | What it shows |
+|---|---|
+| the whole run, one bar | the run's wall time split into the three buckets |
+| the preemption band | how wide the spread of preempted share is across the threads |
+| every thread, sorted | a 100 % stacked row per thread, so the flatness is visible at a glance |
+| the phases, when the trace carries them | where each phase's wall time went |
+
+A thread with no measured split draws no bar, and a trace whose format carries no
+attribution at all draws no charts — the report says the attribution was
+unavailable instead of printing a confident 0 %. `tests/report_charts.rs` checks
+all three rules, including that a zero-length window cannot produce a `NaN`
+coordinate that a browser would silently drop.
+
 ## Formats
 
 | Format | Source |
@@ -100,12 +119,16 @@ It does not invent data.
 - A thread's "0 % preempted" is only ever shown when the source format
   actually measured it.
 
-## Relationship to the SDK
+## Relationship to the rest of the product
 
-`pace-sdk` is the licensed library that produces the samples. This analyzer
-is the open-source consumer of them, and the proof that the attribution is
-real: it verifies the decomposition on every sample and refuses to report on
-a trace that does not hold together.
+`pace-sdk` is the library that produces the samples. This analyzer is the
+open-source consumer of them, and the proof that the attribution is real: it
+verifies the decomposition on every sample and refuses to report on a trace that
+does not hold together.
+
+`service/` runs this same binary behind an HTTP endpoint so somebody can find
+out what PACE says about a trace without a Rust toolchain. It embeds this crate,
+so the numbers it returns are the numbers these commands return.
 
 ## Licence
 

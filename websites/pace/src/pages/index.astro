@@ -1,0 +1,236 @@
+---
+// The product's front door: the problem, what the thing is, how you use it,
+// and the evidence. One product, three ways in.
+import Base from '../layouts/Base.astro';
+import { site, href } from '../data/site';
+import { run, threads, decomposition, measurements, fine, human, pct, share } from '../data/measurements';
+import GapDiagram from '../components/charts/GapDiagram.astro';
+import ThreadStacks from '../components/charts/ThreadStacks.astro';
+import TierStack from '../components/charts/TierStack.astro';
+
+const worst = measurements
+  .filter((m) => !m.skipped)
+  .reduce((a, b) => (b.median > a.median ? b : a));
+---
+
+<Base
+  title="PACE — preemption-aware time attribution for threads that are slow for two different reasons"
+  description={site.description}
+  structured={{
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'PACE',
+    applicationCategory: 'DeveloperApplication',
+    operatingSystem: 'Linux',
+    license: 'https://github.com/devansh0703/PACE',
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+    author: { '@type': 'Person', name: site.author },
+    url: site.url,
+  }}
+>
+  <div class="wrap">
+    <section class="hero">
+      <div class="section-label">Preemption-aware time attribution · open source</div>
+      <h1>Your profiler knows the thread was slow. It does not know whether that was your code or the scheduler.</h1>
+      <p class="lede">
+        A thread that spends {pct(share(run.totals.preemptedNs, run.totals.wallNs))} of its wall time
+        waiting for a core and a thread that spends the same time waiting on a lock look identical to
+        a CPU-time counter, and they need opposite fixes. <strong>PACE</strong> measures which one it
+        was, per thread and per sample, in-process, with no elevated privilege.
+      </p>
+      <p class="lede">
+        It is three things that add up to one: a small C and C++ library you link into your own
+        profiler, an open-source analyzer that reads a trace and reports the split, and a service we
+        host so you can try it without building anything.
+      </p>
+      <div class="cta-row">
+        <a class="btn primary" href={href('service/')}>
+          <i class="ph ph-activity"></i>
+          Analyse a trace now
+        </a>
+        <a class="btn" href={href('install/')}>
+          <i class="ph ph-download-simple"></i>
+          Install it yourself
+        </a>
+        <a class="btn" href={site.repo}>
+          <i class="ph ph-github-logo"></i>
+          Source
+        </a>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">The measurement gap</div>
+      <h2>Two causes, one symptom, opposite fixes</h2>
+      <p>
+        Wall time is what your users feel. CPU time is what your profiler reports. The difference
+        between them is real time that a CPU-time counter cannot attribute, and it has two possible
+        owners: the scheduler took the core away while the thread was runnable, or the thread was not
+        runnable at all.
+      </p>
+      <GapDiagram />
+
+      <div class="grid-2">
+        <div class="panel">
+          <h3><i class="ph ph-pause-circle"></i> Preempted — the scheduler's decision</h3>
+          <p>
+            The thread was runnable and there was no core for it. No amount of work on that thread's
+            code helps. The fix is the thread count, the priority, the affinity, or the machine.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-hourglass"></i> Blocked — the code's decision</h3>
+          <p>
+            The thread was not runnable: asleep, on a lock, or waiting on I/O. This one <em>is</em> a
+            code problem, and it is the one a profiler can already reason about.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">Measured, not modelled</div>
+      <h2>The run that makes the case</h2>
+      <p>
+        {threads.length} threads on 16 hardware threads, one instrumented. Every thread lost roughly
+        {' '}{pct(share(run.totals.preemptedNs, run.totals.wallNs))} of its wall time to preemption
+        while never blocking on anything. A conventional profiler reports
+        the {human(run.totals.onCpuNs / threads.length)} of CPU time and leaves the rest unattributed.
+      </p>
+      <ThreadStacks />
+      <div class="cta-row" style="margin-top:-8px">
+        <a class="btn" href={href('research/')}>
+          <i class="ph ph-chart-line-up"></i>
+          The full evidence
+        </a>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">Three ways in</div>
+      <h2>Link it, run it, or post us a trace</h2>
+      <div class="flow">
+        <div class="flow-row">
+          <div class="flow-icon"><i class="ph ph-plugs" style="font-size:20px"></i></div>
+          <div>
+            <h3>Link the library into your own profiler</h3>
+            <p>
+              One call per sample on the thread being profiled, a stable C ABI, no allocation on the
+              hot path, no background thread, no IPC and no trace buffer. Your product keeps its own
+              model; PACE supplies the attribution it currently has to guess at.
+            </p>
+          </div>
+        </div>
+        <div class="flow-row">
+          <div class="flow-icon"><i class="ph ph-terminal-window" style="font-size:20px"></i></div>
+          <div>
+            <h3>Run the analyzer on a trace you already have</h3>
+            <p>
+              <span class="mono">pace analyze trace.jsonl</span> gives a per-thread attribution, a
+              ranked findings list, and a self-contained HTML report. It reads PACE's own traces and
+              traces from perf, so you can evaluate the split on evidence you already collected.
+            </p>
+          </div>
+        </div>
+        <div class="flow-row">
+          <div class="flow-icon"><i class="ph ph-cloud-arrow-up" style="font-size:20px"></i></div>
+          <div>
+            <h3>Or post the trace to the service we host</h3>
+            <p>
+              The same analyzer runs as a hosted service. Send it a trace over HTTP, get the report
+              back. Nothing is stored, and the service is the same open-source code you can run
+              yourself — this exists so you do not have to build a Rust toolchain to see what PACE
+              says about your run.
+            </p>
+          </div>
+        </div>
+      </div>
+      <TierStack />
+    </section>
+
+    <section>
+      <div class="section-label">Why you can trust the numbers</div>
+      <h2>Every figure is checked against a source that is not PACE</h2>
+      <div class="grid-2">
+        <div class="panel">
+          <h3><i class="ph ph-check-circle"></i> The kernel's own accounting</h3>
+          <p>
+            On-CPU time agrees with <span class="mono">/proc/&lt;tid&gt;/schedstat</span> — which the
+            kernel writes and PACE never touches — to a median of
+            {' '}{fine(measurements.find((m) => m.short === 'on-CPU vs schedstat')!.median)}.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-scales"></i> The invariant, on every sample</h3>
+          <p>
+            <span class="mono">wall == on_cpu + preempted + blocked</span> is checked as the trace is
+            read, and it held exactly on all
+            {' '}{decomposition.samples.toLocaleString('en-US')} samples of the recorded run, with
+            {' '}{decomposition.violating} violations.
+          </p>
+        </div>
+      </div>
+      <div class="callout">
+        <div class="callout-title">Where the claim stops</div>
+        <p>
+          Intel VTune already separates preemption wait from inactive sync wait on Linux, and Perfetto
+          is already an embeddable SDK. The claim here is not that nobody can do this. It is narrower:
+          portable, embeddable, privilege-free and in-process — and it survives contact with both
+          those tools. <a href={href('research/prior-art/')}>The comparison is on the research page</a>,
+          including the column where each of them wins.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">What it is not</div>
+      <h2>PACE is not a profiler</h2>
+      <div class="grid-3">
+        <div class="panel">
+          <h3><i class="ph ph-stack"></i> No stacks</h3>
+          <p>It does not unwind stacks or symbolise frames. Deciding which function burned the time is your profiler's job.</p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-cpu"></i> No GPU, no cache</h3>
+          <p>Different counters, different product. PACE answers one question and answers it exactly.</p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-warning-circle"></i> No invented zeros</h3>
+          <p>
+            Where a platform cannot make a distinction, PACE reports it as unavailable. A dash is not
+            a zero, and the report never confuses them.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">Start</div>
+      <h2>Two minutes, no account</h2>
+      <div class="grid-2">
+        <div class="panel terminal-block">
+          <h3><i class="ph ph-terminal"></i> From a checkout</h3>
+          <pre><code>{`git clone ${site.repo}
+cd PACE/pace-analyzer
+cargo build --release
+./target/release/pace analyze trace.jsonl`}</code></pre>
+          <p>
+            Or <a href={href('service/')}>post the trace to the hosted analyzer</a> and skip the build.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-envelope-simple"></i> Talk to the person who built it</h3>
+          <p>
+            It is one maintainer, and the fastest way to get a question answered is to ask it.
+            <a href={`mailto:${site.contact}`}>{site.contact}</a>.
+          </p>
+          <p>
+            Bugs and feature requests go to
+            {' '}<a href={site.issues}>the issue tracker</a>; the design decisions and the measurement
+            method are in <a href={href('research/')}>the research section</a>.
+          </p>
+        </div>
+      </div>
+    </section>
+  </div>
+</Base>

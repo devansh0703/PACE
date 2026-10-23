@@ -1,0 +1,110 @@
+---
+// The per-repetition records, as the harness wrote them: for each run, the
+// gap between PACE's on-CPU figure and the kernel's own schedstat accounting
+// for the same thread and the same window.
+import { rawRecords, environment, fine } from '../../data/measurements';
+
+const usable = rawRecords.filter(
+  (r) => r.schedstat_on_cpu_s > 0 && r.pace_on_cpu_s > 0
+);
+
+const points = usable
+  .map((r) => ({
+    mode: r.mode,
+    repetition: r.repetition,
+    error: Math.abs(r.pace_on_cpu_s - r.schedstat_on_cpu_s) / r.schedstat_on_cpu_s,
+  }))
+  .sort((a, b) => a.error - b.error);
+
+const width = 900;
+const left = 46;
+const right = 20;
+const top = 26;
+const plotHeight = 170;
+const usableWidth = width - left - right;
+
+const LO = 1e-7;
+const HI = 1e-1;
+const x = (value: number) => {
+  const clamped = Math.min(Math.max(value, LO), HI);
+  return left + (Math.log10(clamped / LO) / Math.log10(HI / LO)) * usableWidth;
+};
+
+const ticks = [1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1];
+const plotBottom = top + plotHeight;
+
+const modes = [...new Set(points.map((p) => p.mode))];
+const colour: Record<string, string> = {
+  spin: 'var(--accent)',
+  sleep: 'var(--sev-info)',
+};
+const colourFor = (mode: string) => colour[mode] ?? 'var(--ink-dim)';
+
+const worst = points[points.length - 1];
+const medianError = points.length
+  ? points[Math.floor(points.length / 2)].error
+  : 0;
+---
+
+<figure class="chart">
+  <figcaption>
+    <span>PACE's on-CPU figure against the kernel's own accounting, one mark per run</span>
+    <span class="src">pace-sdk/results/accuracy.json, raw_records · {points.length} runs · {environment.cpu_model}</span>
+  </figcaption>
+  <div class="plot">
+    <svg viewBox={`0 0 ${width} ${plotBottom + 42}`} role="img" aria-label={`Dot plot of on-CPU relative error across ${points.length} runs, from ${fine(points[0].error * 100)} to ${fine(worst.error * 100)}`}>
+      <g>
+        {
+          ticks.map((t) => (
+            <g>
+              <line class="grid" x1={x(t)} y1={top - 8} x2={x(t)} y2={plotBottom} />
+              <text x={x(t)} y={plotBottom + 16} font-size="10" text-anchor="middle">{t.toExponential(0)}</text>
+            </g>
+          ))
+        }
+      </g>
+      <line class="axis" x1={left} y1={plotBottom} x2={left + usableWidth} y2={plotBottom} />
+
+      <g>
+        {
+          points.map((p, i) => {
+            const cx = x(p.error);
+            const cy = top + 14 + ((i * 37) % (plotHeight - 28));
+            return (
+              <g>
+                <line x1={cx} y1={plotBottom} x2={cx} y2={cy} stroke={colourFor(p.mode)} stroke-width="0.5" opacity="0.45" />
+                <circle cx={cx} cy={cy} r="3.5" fill={colourFor(p.mode)} />
+              </g>
+            );
+          })
+        }
+      </g>
+
+      <g>
+        <line x1={x(medianError)} y1={top - 12} x2={x(medianError)} y2={plotBottom} stroke="var(--ink)" stroke-dasharray="3 3" />
+        <text x={x(medianError) + 5} y={top - 2} font-size="11">median {fine(medianError * 100)}</text>
+      </g>
+
+      <g font-size="11" fill="var(--ink-dim)">
+        {
+          modes.map((mode, i) => (
+            <g>
+              <circle cx={left + i * 90} cy={plotBottom + 32} r="3.5" fill={colourFor(mode)} />
+              <text x={left + i * 90 + 10} y={plotBottom + 36}>{mode} window</text>
+            </g>
+          ))
+        }
+        <text x={left + usableWidth} y={plotBottom + 32} text-anchor="end">relative error, log scale</text>
+      </g>
+    </svg>
+  </div>
+  <div class="chart-note">
+    <p>
+      The two windows are deliberately different: <span class="mono">spin</span> keeps the thread
+      runnable for the whole two seconds, and <span class="mono">sleep</span> keeps it off-CPU for
+      almost all of it. Both are compared against <span class="mono">/proc/&lt;tid&gt;/schedstat</span>,
+      which the kernel writes and PACE never touches. The worst run on this figure is
+      {' '}{fine(worst.error * 100)}, and the median is {fine(medianError * 100)}.
+    </p>
+  </div>
+</figure>

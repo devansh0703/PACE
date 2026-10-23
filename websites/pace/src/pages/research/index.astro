@@ -1,0 +1,207 @@
+---
+import Base from '../../layouts/Base.astro';
+import { site, href } from '../../data/site';
+import { measurements, environment, decomposition, perfSchedAvailable, fine } from '../../data/measurements';
+import AccuracyLog from '../../components/charts/AccuracyLog.astro';
+import PairedRuns from '../../components/charts/PairedRuns.astro';
+import CompareMatrix from '../../components/charts/CompareMatrix.astro';
+
+const gated = measurements.filter((m) => !m.skipped);
+const reported = measurements.filter((m) => m.skipped);
+---
+
+<Base
+  title="Research — the method, the evidence, and where the claim stops"
+  description="How PACE's attribution is measured, what it was checked against, and the parts of the claim that do not survive contact with the incumbents."
+>
+  <div class="wrap">
+    <div class="breadcrumb"><a href={href()}>PACE</a> / research</div>
+    <section class="hero">
+      <div class="section-label">Research · the other half of this site</div>
+      <h1>The evidence, published next to the marketing rather than behind it</h1>
+      <p class="lede">
+        This is not a company describing a product it wants you to trust. It is one maintainer
+        publishing a measurement and the checks on it, including the checks that are weaker than they
+        look and the claims that were withdrawn. The marketing pages sell the thing; these pages are
+        the reason to believe it, and they are the reason to disbelieve parts of it.
+      </p>
+      <div class="cta-row">
+        <a class="btn primary" href={href('research/accuracy/')}>
+          <i class="ph ph-ruler"></i>
+          The accuracy method
+        </a>
+        <a class="btn" href={href('research/prior-art/')}>
+          <i class="ph ph-scales"></i>
+          Prior art
+        </a>
+        <a class="btn" href={`${site.repo}/blob/main/pace-sdk/results/accuracy.json`}>
+          <i class="ph ph-file-code"></i>
+          The raw artifact
+        </a>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">The method in one paragraph</div>
+      <h2>Measure the same window two ways and compare</h2>
+      <p>
+        PACE's claim is that its split of a thread's wall time is real. The way to check that is not
+        to reason about it: it is to run PACE and an independent source over the same thread and the
+        same window, and compare the numbers. The verification harness does that with the kernel's own
+        scheduling accounting, with <span class="mono">perf sched timehist</span>, and with an
+        independently read <span class="mono">CLOCK_MONOTONIC</span>. Every figure on this site comes
+        out of that harness and lands in one committed JSON file.
+      </p>
+      <div class="grid-3">
+        <div class="panel">
+          <h3><i class="ph ph-arrows-left-right"></i> Paired runs</h3>
+          <p>
+            {gated.reduce((n, m) => n + m.n, 0)} comparisons across the gated checks, plus
+            {' '}{decomposition.samples.toLocaleString('en-US')} recorded samples for the invariant.
+            Both sources are read over the same window as PACE.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-database"></i> Two observed regimes</h3>
+          <p>
+            A <span class="mono">spin</span> window where the thread stays runnable, and a
+            <span class="mono">sleep</span> window where it is off-CPU almost entirely. A measurement
+            that only worked in one of them would not be a measurement.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-lock"></i> A gate per check</h3>
+          <p>
+            Each comparison has a threshold, the build fails when one is missed, and the thresholds
+            and their basis are in the artifact rather than in prose.
+          </p>
+        </div>
+      </div>
+      <AccuracyLog />
+      <div class="cta-row" style="margin-top:-8px">
+        <a class="btn" href={href('research/accuracy/')}>
+          <i class="ph ph-list-magnifying-glass"></i>
+          Every figure, and the method behind it
+        </a>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">The environment</div>
+      <h2>One machine, stated so you can discount for it</h2>
+      <p>
+        Every number here comes from one laptop. That is a real limitation on how far the figures
+        generalise, and the honest way to publish it is to publish the machine alongside the result.
+      </p>
+      <div class="readout">
+        <div class="readout-head">
+          <span>the measurement machine</span>
+          <span class="mono">pace-sdk/results/accuracy.json · environment</span>
+        </div>
+        <div class="readout-body">
+          <div class="status-list">
+            <dt>cpu</dt><dd>{environment.cpu_model}</dd>
+            <dt>threads</dt><dd>{environment.cpu_count}</dd>
+            <dt>kernel</dt><dd class="mono">{environment.uname}</dd>
+            <dt>governor</dt><dd class="mono">{environment.governor}</dd>
+            <dt>perf_event_paranoid</dt><dd class="mono">{environment.kernel_perf_event_paranoid} — the strict default</dd>
+            <dt>clk_tck</dt><dd class="mono">{environment.clk_tck}</dd>
+            <dt>recorded</dt><dd class="mono">{environment.timestamp_utc}</dd>
+            <dt>perf sched available</dt><dd>{perfSchedAvailable ? 'yes' : 'no'}</dd>
+          </div>
+        </div>
+      </div>
+      <PairedRuns />
+      <div class="callout">
+        <div class="callout-title">What a single-machine result does and does not support</div>
+        <p>
+          It supports: the split is measured rather than modelled, the arithmetic holds exactly, and
+          the agreement with the kernel's own accounting is not an artefact of agreement between two
+          of PACE's own numbers. It does not support: the same percentages on a different kernel, a
+          different scheduler or a different architecture. Re-running the harness is one command, and
+          the harness is in the repository precisely so that the second machine is somebody else's
+          problem to solve.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">The claim, and its limits</div>
+      <h2>What was withdrawn, and what replaced it</h2>
+      <p>
+        The premise this project started from was that no existing tool separates time-on-CPU from
+        time-lost-to-preemption. <strong>That premise was false.</strong> Intel VTune's threading
+        analysis already does it on Linux. The claim was rewritten to something narrower, and the
+        rewrites are recorded rather than quietly edited:
+      </p>
+      <CompareMatrix />
+      <div class="grid-2">
+        <div class="panel">
+          <h3><i class="ph ph-x-circle"></i> Withdrawn</h3>
+          <p>
+            "No existing tool separates work from pause." Withdrawn, because VTune does.
+          </p>
+          <p>
+            "PACE ships for Linux, Windows and macOS with parity." Withdrawn: it ships for Linux
+            today, and the other two platforms exist behind the same API with the split marked
+            unavailable, which is not parity.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-check-circle"></i> Replaced with</h3>
+          <p>
+            Portable, embeddable, privilege-free and in-process. VTune cannot be linked into a
+            third-party game engine, and Perfetto is a trace rather than a counter — no buffer, no
+            IPC, no background writer.
+          </p>
+          <p>
+            The verified core is the <em>time</em> attribution. The cycle figures are a labelled
+            convenience, computed from a measured frequency, and the API marks them as an estimate.
+          </p>
+        </div>
+      </div>
+      <p>
+        The full competitive and prior-art analysis, including the patent posture and the searches
+        that were and were not run, is on
+        {' '}<a href={href('research/prior-art/')}>the prior-art page</a>.
+      </p>
+    </section>
+
+    <section>
+      <div class="section-label">Reproduce it</div>
+      <h2>The harness is in the repository, and it is the point</h2>
+      <div class="grid-2">
+        <div class="panel terminal-block">
+          <h3><i class="ph ph-play"></i> Run the accuracy harness</h3>
+          <pre><code>{`cd PACE/pace-sdk
+cmake -S . -B build -G Ninja
+cmake --build build -j 8
+python3 tests/verify/verify_accuracy.py \\
+  --out results/accuracy.json`}</code></pre>
+          <p>
+            It needs the kernel's scheduler statistics switched on to check the run-queue delay, and
+            it records the environment it ran in next to the numbers.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-eye"></i> What to look for when you do</h3>
+          <p>
+            The decomposition should be exact and not approximate: a violation count of zero, and not
+            a small percentage. If you see a nonzero violation count, that is a bug worth reporting
+            and it is the one failure mode this project treats as a defect rather than as noise.
+          </p>
+          <p>
+            The {reported.length} reported-not-gated checks are labelled as such in the artifact with
+            a <span class="mono">skip_reason</span>. Not every comparison is a gate, and pretending
+            otherwise would be the easiest lie on this site.
+          </p>
+        </div>
+      </div>
+      <p>
+        The tightest gated figure is {fine(Math.min(...gated.map((m) => m.median)))} and the loosest
+        gate is set at {fine(Math.max(...gated.map((m) => m.threshold)))}. Both come from the
+        artifact, as does every other number on this page.
+      </p>
+    </section>
+  </div>
+</Base>

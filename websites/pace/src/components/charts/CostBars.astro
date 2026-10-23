@@ -1,0 +1,102 @@
+---
+// The per-call cost, from the SDK's own benchmark artifact. The component
+// renders nothing at all when that artifact is absent, so the site can never
+// print a cost it did not measure.
+import { overhead } from '../../data/measurements';
+
+const rows = overhead?.rows ?? null;
+const example = overhead?.example ?? null;
+
+const width = 900;
+const labelWidth = 286;
+const right = 104;
+const rowHeight = 38;
+const top = 34;
+const usable = width - labelWidth - right;
+
+// A log axis, because the rows span hundreds of nanoseconds to tens of
+// microseconds and a linear axis would erase everything but the largest.
+const LO = 1e2;
+const HI = 1e5;
+const x = (ns: number) => {
+  const clamped = Math.min(Math.max(ns, LO), HI);
+  return labelWidth + (Math.log10(clamped / LO) / Math.log10(HI / LO)) * usable;
+};
+
+const ticks = [1e2, 1e3, 1e4, 1e5];
+const label = (v: number) => (v >= 1e3 ? `${v / 1e3} µs` : `${v} ns`);
+
+// The two harnesses measure the same call and disagree, so the caption says so
+// rather than showing whichever number is nicer.
+const sampleRows = rows?.filter((r) => r.configuration.startsWith('per sample')) ?? [];
+const spread =
+  sampleRows.length === 2 && example
+    ? Math.abs(sampleRows[1].medianNs - sampleRows[0].medianNs) / sampleRows[0].medianNs
+    : null;
+---
+
+{
+  rows && (
+    <figure class="chart">
+      <figcaption>
+        <span>Cost of one call, median, with the p99 where the harness reports one</span>
+        <span class="src">pace-sdk/results/overhead.json · scripts/collect_overhead.py</span>
+      </figcaption>
+      <div class="plot">
+        <svg
+          viewBox={`0 0 ${width} ${top + rows.length * rowHeight + 34}`}
+          role="img"
+          aria-label={`Per-call cost: ${rows.map((r) => `${r.configuration} ${Math.round(r.medianNs)} nanoseconds`).join(', ')}`}
+        >
+          <g>
+            {ticks.map((t) => (
+              <g>
+                <line class="grid" x1={x(t)} y1={top - 10} x2={x(t)} y2={top + rows.length * rowHeight - 10} />
+                <text x={x(t)} y={top + rows.length * rowHeight + 16} font-size="10" text-anchor="middle">
+                  {label(t)}
+                </text>
+              </g>
+            ))}
+          </g>
+
+          <g>
+            {rows.map((row, i) => {
+              const y = top + i * rowHeight;
+              const mx = x(row.medianNs);
+              const px = row.p99Ns === null ? null : x(row.p99Ns);
+              return (
+                <g>
+                  <text class="label" x="0" y={y + 15} font-size="12">{row.configuration}</text>
+                  <text x="0" y={y + 29} font-size="10" fill="var(--ink-faint)">{row.note}</text>
+                  <rect x={labelWidth} y={y + 2} width={usable} height="16" fill="var(--bar-track)" />
+                  <rect x={labelWidth} y={y + 2} width={mx - labelWidth} height="16" fill="var(--accent)" />
+                  {px !== null && (
+                    <line x1={px} y1={y} x2={px} y2={y + 20} stroke="var(--ink)" stroke-width="1.5" />
+                  )}
+                  <text x={width - 4} y={y + 15} font-size="10" text-anchor="end">
+                    {Math.round(row.medianNs).toLocaleString('en-US')} ns
+                    {row.p99Ns !== null && ` / p99 ${Math.round(row.p99Ns).toLocaleString('en-US')} ns`}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
+        </svg>
+      </div>
+      <div class="chart-note">
+        <p>
+          The first two rows are the same call measured by two harnesses, and they disagree by
+          {spread === null ? ' a few per cent' : ` ${(spread * 100).toFixed(0)} per cent`}. Both are in
+          the artifact because publishing only the smaller one would be picking the number rather than
+          measuring it. The figure that matters for a profiler is the first: at a thousand samples a
+          second per thread it is a few thousandths of a core.
+        </p>
+        <p>
+          The last two rows are the costs a vendor pays once rather than per sample — creating a
+          session, and registering a thread — so they are irrelevant at sample rate and are recorded
+          here mainly to show they are not the ones that would stop somebody embedding this.
+        </p>
+      </div>
+    </figure>
+  )
+}

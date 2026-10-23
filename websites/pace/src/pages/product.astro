@@ -1,0 +1,237 @@
+---
+import Base from '../layouts/Base.astro';
+import { site, href } from '../data/site';
+import { measurements, threads, environment, fine, pct } from '../data/measurements';
+import TierStack from '../components/charts/TierStack.astro';
+import FormatFlow from '../components/charts/FormatFlow.astro';
+import PreemptHistogram from '../components/charts/PreemptHistogram.astro';
+
+const cfs = measurements.find((m) => m.short === 'on-CPU vs schedstat')!;
+const perfRun = measurements.find((m) => m.short === 'on-CPU vs perf run time')!;
+const wait = measurements.find((m) => m.short === 'off-CPU vs perf wait time')!;
+---
+
+<Base
+  title="The product — PACE"
+  description="What PACE is: a C and C++ counter, an open-source analyzer, and the trace formats both of them understand."
+>
+  <div class="wrap">
+    <section class="hero">
+      <div class="section-label">The product</div>
+      <h1>One measurement, three ways to consume it</h1>
+      <p class="lede">
+        PACE is not two products that happen to ship together, and the components are not separately
+        useful on their own. The library is the thing that measures; the analyzer is the proof that
+        the measurement is real; the service is the analyser without the build step. They share one
+        model of time, and the model is a single line of arithmetic.
+      </p>
+      <div class="cta-row">
+        <a class="btn primary" href={href('install/')}>
+          <i class="ph ph-download-simple"></i>
+          Install it
+        </a>
+        <a class="btn" href={href('service/')}>
+          <i class="ph ph-activity"></i>
+          Try the hosted analyzer
+        </a>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">The model</div>
+      <h2>Four numbers per sample, and one equation that has to hold</h2>
+      <p>
+        A sample is a window of wall time plus the three ways a thread can spend it. The arithmetic
+        is not a statistical model fitted to the data — it is four measurements of the same window,
+        and the analyzer rejects a trace where they do not add up.
+      </p>
+      <div class="grid-2">
+        <div class="panel">
+          <h3><i class="ph ph-clock"></i> wall_ns</h3>
+          <p>
+            The window, from <span class="mono">CLOCK_MONOTONIC</span>. Measured independently by the
+            verifier as well as by PACE, so the two can be compared:
+            {' '}{fine(measurements.find((m) => m.short === 'wall vs CLOCK_MONOTONIC')!.median)} median
+            disagreement.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-play-circle"></i> on_cpu_ns</h3>
+          <p>
+            The thread was on a core. Cross-checked against the kernel's own cfs accounting at
+            {' '}{fine(cfs.median)} median, and against
+            <span class="mono">perf sched timehist</span> at {fine(perfRun.median)}.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-pause-circle"></i> preempted_ns</h3>
+          <p>
+            Runnable, and the scheduler had other work. This is the run-queue delay, which only Linux
+            reports directly. It is the number no CPU-time counter can produce.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-hourglass"></i> blocked_ns</h3>
+          <p>
+            Neither running nor runnable. Cross-checked against perf's wait-time column at
+            {' '}{fine(wait.median)} median, which is the tightest of the off-CPU comparisons.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">Architecture</div>
+      <h2>Three tiers, and the one at the bottom is the product</h2>
+      <p>
+        The design decision that shapes everything else: a profiler vendor cannot require root from
+        its users. So the portable tier needs nothing at all, and the two richer tiers attach to it
+        when the machine allows.
+      </p>
+      <TierStack />
+
+      <h3 style="margin-top:36px">Platform support, stated exactly</h3>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Platform</th>
+              <th>Tier 0</th>
+              <th>Three-way split</th>
+              <th>Tier 1</th>
+              <th>Tier 2</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Linux</td>
+              <td class="ok">yes</td>
+              <td class="ok">yes — run-queue delay from procfs</td>
+              <td class="ok">with CAP_PERFMON</td>
+              <td class="ok">with privilege and BTF</td>
+            </tr>
+            <tr>
+              <td>Windows</td>
+              <td class="ok">yes</td>
+              <td class="dim">no — on-CPU vs blocked only</td>
+              <td class="dim">no</td>
+              <td class="dim">no</td>
+            </tr>
+            <tr>
+              <td>macOS</td>
+              <td class="ok">yes</td>
+              <td class="dim">no — on-CPU vs blocked only</td>
+              <td class="dim">no</td>
+              <td class="dim">no</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout">
+        <div class="callout-title">A dash is not a zero</div>
+        <p>
+          On Windows and macOS PACE reports on-CPU against blocked and marks the split as
+          <em>unavailable</em>. It does not report a confident zero for the preempted bucket, because
+          zero is a measurement and there it would be a false one. The test suite asserts the flags
+          are clear.
+        </p>
+      </div>
+
+      <h3 style="margin-top:36px">The kernel has to be collecting it, too</h3>
+      <p>
+        Even on Linux the three-way split needs the kernel's scheduler accounting, which a
+        distribution kernel may leave switched off. PACE detects that case and reports the split as
+        unavailable rather than as zero, for the same reason. The verification machine ran kernel
+        {' '}<span class="mono">{String(environment.uname).split(' ')[2]}</span> with
+        {' '}<span class="mono">perf_event_paranoid={environment.kernel_perf_event_paranoid}</span>,
+        which is the strict default — and tier 0 worked anyway, which is the point of tier 0.
+      </p>
+    </section>
+
+    <section>
+      <div class="section-label">Interfaces</div>
+      <h2>One C ABI, and a trace format if you would rather not embed</h2>
+      <FormatFlow />
+      <div class="grid-2">
+        <div class="panel">
+          <h3><i class="ph ph-brackets-curly"></i> In-process</h3>
+          <pre><code>{`pace_config cfg;
+pace_config_init(&cfg);
+
+pace_session *session;
+pace_session_create(&cfg, &session);
+
+pace_thread *thread;
+pace_session_register_thread(session, &thread);
+
+pace_sample sample;
+pace_session_sample(session, thread, &sample);
+
+// sample.on_cpu_ns
+// sample.preempted_ns
+// sample.blocked_ns
+// sample.wall_ns
+// sample.source`}</code></pre>
+          <p>
+            One call per sample, no allocation on the hot path, and a struct with a
+            <span class="mono">struct_size</span> field so the ABI can grow without breaking a
+            consumer that was built against an older header.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-file-text"></i> As a trace</h3>
+          <p>
+            An optional JSONL writer emits Chrome Trace Event records, so a vendor's existing viewer
+            can already open the file. The open-source analyzer adds the attribution report on top of
+            it, and <span class="mono">pace verify</span> can gate a CI job on the invariant.
+          </p>
+          <p>
+            Stable error codes for the agent-ready path:
+            <span class="mono">io-error</span>, <span class="mono">parse-error</span>,
+            <span class="mono">format-unknown</span>, <span class="mono">empty-trace</span>,
+            <span class="mono">unsupported-output</span>, <span class="mono">write-error</span>,
+            <span class="mono">invalid-argument</span>.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">Scale</div>
+      <h2>What happens when the trace is bigger than memory</h2>
+      <p>
+        The analyzer folds each sample into its thread's aggregate as it reads, so memory is
+        proportional to the number of threads and not to the number of samples. On a trace of about a
+        hundred thousand samples the streaming path used 3.4 MB against 16.8 MB for the retaining
+        path, and the two produce identical totals. The summarised path checks the invariant as it
+        reads, so the report never says "exact" for a trace it did not check.
+      </p>
+      <PreemptHistogram />
+    </section>
+
+    <section>
+      <div class="section-label">What it is not</div>
+      <h2>The scope, in the product's own words</h2>
+      <div class="grid-3">
+        <div class="panel">
+          <h3><i class="ph ph-stack"></i> Not a sampler</h3>
+          <p>Stack unwinding, symbolisation and flame graphs are the vendor's product. PACE supplies the attribution those profilers cannot make.</p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-cpu"></i> Not a GPU or cache profiler</h3>
+          <p>Different counters, different buyer, different product.</p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-cloud-slash"></i> Not a continuous production agent</h3>
+          <p>PACE measures a window you choose. Continuous always-on profiling is a different requirement set.</p>
+        </div>
+      </div>
+      <p>
+        The whole measured position, including the parts that disagree with it, is in
+        {' '}<a href={href('research/')}>the research section</a>. The licence terms are
+        {' '}on <a href={href('license/')}>the licence page</a>, and the source is
+        {' '}<a href={site.repo}>on GitHub</a>.
+      </p>
+    </section>
+  </div>
+</Base>

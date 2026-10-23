@@ -1,4 +1,12 @@
-# PACE SDK — Preemption-Aware Time Attribution
+# PACE — the library
+
+**P**reemption-**A**ware **T**ime **A**ttribution.
+
+This is the C and C++ half of one product. The other halves are the
+[analyzer](../pace-analyzer/), which proves the measurement, and the
+[hosted service](../service/), which runs the analyzer for you. They share one
+model of time, and this directory is the artifact a vendor links into their own
+profiler.
 
 A portable C and C++ library that tells a developer-tool vendor **where a
 thread's wall time actually went**: how much was spent running, how much was
@@ -44,15 +52,21 @@ report on a trace that does not hold together.
 
 ## The tiers
 
-| Tier | Needs | Gives you | Linux cost |
-|---|---|---|---|
-| 0 | nothing | on-CPU, preempted, blocked, in nanoseconds | 524 ns/sample |
-| 1 | `CAP_PERFMON` or `perf_event_paranoid <= 1` | + measured core cycles | 1.01 µs/sample |
-| 2 | BTF + privilege to attach tracepoints | + the scheduler's own switch events | same as tier 0 |
+| Tier | Needs | Gives you |
+|---|---|---|
+| 0 | nothing | on-CPU, preempted, blocked, in nanoseconds |
+| 1 | `CAP_PERFMON` or `perf_event_paranoid <= 1` | + measured core cycles |
+| 2 | BTF + privilege to attach tracepoints | + the scheduler's own switch events |
 
 Each tier is an addition to the one below. None of them is required, and the
 sample always carries the tier it came from so you never present a derived
 number as a measured one.
+
+The per-call cost is **measured**, not quoted: `results/overhead.json`, produced
+by `scripts/collect_overhead.py`, holds the median and p99 for a sample, the
+median cost of creating a session, and the median cost of registering a thread.
+The site renders those figures from the artifact rather than repeating them in
+prose.
 
 ### The platforms
 
@@ -115,10 +129,18 @@ for the method, the ground-truth sources and the measured figures.
   measured per-call costs.
 - [docs/PREMISE-VERIFICATION.md](docs/PREMISE-VERIFICATION.md) — the raw
   measurements the method rests on.
+- [../service/README.md](../service/README.md) — the hosted analyzer.
 - [LICENSING.md](LICENSING.md) — the licence, and what a licensee gets.
 
 ## Licence
 
 Business Source License 1.1. See [LICENSING.md](LICENSING.md).
+
+That is source-available rather than open source, and it is stated plainly
+rather than described as if it were the other thing: reading, modifying and
+developing against the library are free, production use inside a shipped
+product needs terms until the Change Date, and every version converts to
+Apache-2.0 on 2030-11-01. The full terms and the permitted-use grant are in
+LICENSING.md, and the site's licence page carries the table.
 
 The companion analyzer, `pace-analyzer`, is Apache-2.0.

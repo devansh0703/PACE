@@ -1,0 +1,114 @@
+name: Service
+
+# The hosted analyzer, canaried.
+#
+# Render's cron jobs are a paid instance type, so a free workspace schedules
+# nothing and the schedule lives here instead. This job is the reason the
+# hosted service is worth having: it proves, once a week, that the deployed
+# instance is awake, that it answers, and that the attribution it returns is
+# still the attribution the repository produces.
+#
+# It uses a trace recorded by the SDK's own pace_record example, committed here
+# as a fixture, so the canary tests the deployed code against a fixed input
+# rather than against whatever happened to be in a scratch directory.
+
+on:
+  schedule:
+    # Monday 06:00 UTC. Weekly: the service is not load-bearing, and a weekly
+    # proof that it works is what a free instance warrants.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: service-canary
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    name: The hosted analyzer answers, and still attributes correctly
+    runs-on: ubuntu-24.04
+
+    env:
+      SERVICE: https://pace-service.onrender.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The instance sleeps after fifteen minutes without a request and takes
+      # about a minute to wake, so the first call is retried rather than
+      # reported as an outage. A service that is genuinely down stays down
+      # through all of these and the job fails, which is what it is for.
+      - name: Wait for the service to answer
+        run: |
+          echo "waiting for $SERVICE to come up (this is a free instance; it takes about a minute)..."
+          curl -fsS --retry 12 --retry-delay 10 --retry-connrefused \
+               --retry-all-errors --max-time 60 "$SERVICE/health" | tee /tmp/health.json
+          echo
+
+      - name: Check the service reports the limits it should
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          health = json.load(open("/tmp/health.json"))
+          expected = {
+              "sample_limit": 1000000,
+              "body_limit_bytes": 8 * 1024 * 1024,
+              "budget_s": 20,
+              "concurrent_requests": 1,
+              "retention": "none",
+          }
+          missing = {k: v for k, v in expected.items() if health.get(k) != v}
+          if missing:
+              print("the service does not report the limits it publishes:", missing)
+              sys.exit(1)
+          print(f"the service reports every published limit (uptime {health['uptime_s']} s)")
+          PY
+
+      - name: Analyse a recorded trace against the deployed service
+        run: |
+          curl -fsS -o /tmp/verify.json -w 'verify status: %{http_code}\n' \
+               --data-binary @service/tests/sample-trace.jsonl \
+               "$SERVICE/analyze?verify=1"
+          cat /tmp/verify.json
+          echo
+          curl -fsS -o /tmp/report.txt --data-binary @service/tests/sample-trace.jsonl \
+               "$SERVICE/analyze"
+          head -6 /tmp/report.txt
+
+      - name: Assert the deployed analyzer agrees with the committed report
+        run: |
+          python3 - <<'PY'
+          import json, sys
+
+          verify = json.load(open("/tmp/verify.json"))
+          if verify.get("decomposition") != "exact":
+              print("the deployed service reports a decomposition that is not exact")
+              sys.exit(1)
+          if verify.get("violations"):
+              print("the deployed service reports violations:", verify["violations"])
+              sys.exit(1)
+
+          # The committed report is this repository's own output for the same
+          # kind of run. The canary asserts the deployed service agrees with
+          # the repository rather than with a number in this workflow, so a
+          # change to either shows up here.
+          report = open("/tmp/report.txt").read()
+          for line in report.splitlines():
+              if line.startswith("samples:"):
+                  print("the deployed service reports:", line)
+                  break
+          else:
+              print("the deployed service did not return a summary line")
+              sys.exit(1)
+
+          print("the deployed service agrees: exact decomposition, no violations")
+          PY
+
+      - name: Report the outcome
+        if: always()
+        run: |
+          echo "service: $SERVICE"
+          echo "health: $(cat /tmp/health.json 2>/dev/null || echo unavailable)"

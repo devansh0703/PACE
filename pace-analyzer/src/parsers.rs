@@ -38,23 +38,40 @@ impl Format {
             let n = file.read(&mut buf)?;
             head.push_str(&String::from_utf8_lossy(&buf[..n]));
         }
+        Ok(Format::detect_head(&head))
+    }
 
+    /// Detect the format from the first few kilobytes of a trace.
+    ///
+    /// Split out from [`Format::detect`] so a trace that is already in memory
+    /// is classified by the same rules, and not by a second implementation
+    /// that can drift from this one.
+    pub fn detect_head(head: &str) -> Format {
         let trimmed = head.trim_start();
         if trimmed.starts_with('{') {
             if head.contains("traceEvents") {
-                return Ok(Format::Chrome);
+                return Format::Chrome;
             }
             // PACE's own writer emits Chrome-compatible events too, so the
             // presence of PACE's attribution fields is the reliable signal.
             if head.contains("on_cpu_ns") || head.contains("preempted_ns") {
-                return Ok(Format::Pace);
+                return Format::Pace;
             }
-            return Ok(Format::Chrome);
+            return Format::Chrome;
         }
         if head.contains("wait time") && head.contains("run time") {
-            return Ok(Format::PerfSched);
+            return Format::PerfSched;
         }
-        Ok(Format::PerfTrace)
+        Format::PerfTrace
+    }
+
+    /// Detect the format from bytes that are already in memory.
+    ///
+    /// Only the head is examined, which is the same window
+    /// [`Format::detect`] reads from a file.
+    pub fn detect_bytes(bytes: &[u8]) -> Format {
+        let head = String::from_utf8_lossy(&bytes[..bytes.len().min(8192)]);
+        Format::detect_head(&head)
     }
 }
 
@@ -82,11 +99,39 @@ pub fn parse_summarised(path: &Path, format: Format) -> crate::Result<Trace> {
 }
 
 fn parse_with(path: &Path, format: Format, retain_samples: bool) -> crate::Result<Trace> {
+    parse_reader(BufReader::new(File::open(path)?), format, retain_samples)
+}
+
+/// Parse a trace that is already in memory.
+///
+/// The same parsers, over a buffer rather than a file: the service reads an
+/// uploaded trace into memory, and there is no reason for it to write that
+/// buffer to a temporary file so that a second implementation can read it
+/// back. Classification uses [`Format::detect_bytes`], so an in-memory trace
+/// is detected by the same rules as one on disk.
+pub fn parse_memory(
+    bytes: &[u8],
+    format: Option<Format>,
+    retain_samples: bool,
+) -> crate::Result<Trace> {
+    let format = match format {
+        Some(format) => format,
+        None => Format::detect_bytes(bytes),
+    };
+    parse_reader(std::io::Cursor::new(bytes), format, retain_samples)
+}
+
+/// Parse a trace from any buffered reader.
+pub fn parse_reader<R: BufRead>(
+    reader: R,
+    format: Format,
+    retain_samples: bool,
+) -> crate::Result<Trace> {
     match format {
-        Format::Pace => parse_pace_jsonl(path, retain_samples),
-        Format::Chrome => parse_chrome_trace(path, retain_samples),
-        Format::PerfSched => parse_perf_sched(path, retain_samples),
-        Format::PerfTrace => parse_perf_trace(path, retain_samples),
+        Format::Pace => parse_pace_jsonl_from(reader, retain_samples),
+        Format::Chrome => parse_chrome_trace_from(reader, retain_samples),
+        Format::PerfSched => parse_perf_sched_from(reader, retain_samples),
+        Format::PerfTrace => parse_perf_trace_from(reader, retain_samples),
     }
 }
 
@@ -101,8 +146,14 @@ fn parse_with(path: &Path, format: Format, retain_samples: bool) -> crate::Resul
 /// end, and the readable part is still worth analysing. The count lands in
 /// [`Trace::malformed_lines`].
 pub fn parse_pace_jsonl(path: &Path, retain_samples: bool) -> crate::Result<Trace> {
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
+    parse_pace_jsonl_from(BufReader::new(File::open(path)?), retain_samples)
+}
+
+/// Parse PACE's JSONL format from a reader.
+///
+/// The body is [`parse_pace_jsonl`]; this is the same parser over any
+/// buffered source, which is what the service uses.
+pub fn parse_pace_jsonl_from<R: BufRead>(reader: R, retain_samples: bool) -> crate::Result<Trace> {
     let mut trace = Trace {
         retain_samples,
         ..Default::default()
@@ -160,7 +211,20 @@ pub fn parse_pace_jsonl(path: &Path, retain_samples: bool) -> crate::Result<Trac
 /// duration in `dur` (microseconds). PACE-specific attribution is read from
 /// `args` when present.
 pub fn parse_chrome_trace(path: &Path, retain_samples: bool) -> crate::Result<Trace> {
-    let text = std::fs::read_to_string(path)?;
+    parse_chrome_trace_from(std::fs::File::open(path)?, retain_samples)
+}
+
+/// Parse a Chrome Trace Event JSON document from a reader.
+///
+/// A Chrome trace is one JSON document rather than one object per line, so
+/// this reads the whole source before parsing. [`parse_pace_jsonl_from`]
+/// is the streaming counterpart.
+pub fn parse_chrome_trace_from<R: Read>(
+    mut source: R,
+    retain_samples: bool,
+) -> crate::Result<Trace> {
+    let mut text = String::new();
+    source.read_to_string(&mut text)?;
     let value: serde_json::Value = serde_json::from_str(&text)
         .map_err(|e| crate::Error::Parse(format!("invalid JSON: {}", e)))?;
 
@@ -241,8 +305,11 @@ pub fn parse_chrome_trace(path: &Path, retain_samples: bool) -> crate::Result<Tr
 /// uses `sch delay` as the preemption bucket and `run time` as the on-CPU
 /// bucket, and takes the blocked time as the remainder of the wall window.
 pub fn parse_perf_sched(path: &Path, retain_samples: bool) -> crate::Result<Trace> {
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
+    parse_perf_sched_from(BufReader::new(File::open(path)?), retain_samples)
+}
+
+/// Parse `perf sched timehist` output from a reader.
+pub fn parse_perf_sched_from<R: BufRead>(reader: R, retain_samples: bool) -> crate::Result<Trace> {
     let mut trace = Trace {
         retain_samples,
         ..Default::default()
@@ -332,8 +399,11 @@ pub fn parse_perf_sched(path: &Path, retain_samples: bool) -> crate::Result<Trac
 /// and arguments. Thread context-switch events (`sched_switch`) are the ones
 /// that carry scheduler information.
 pub fn parse_perf_trace(path: &Path, retain_samples: bool) -> crate::Result<Trace> {
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
+    parse_perf_trace_from(BufReader::new(File::open(path)?), retain_samples)
+}
+
+/// Parse `perf trace` output from a reader.
+pub fn parse_perf_trace_from<R: BufRead>(reader: R, retain_samples: bool) -> crate::Result<Trace> {
     let mut trace = Trace {
         retain_samples,
         ..Default::default()

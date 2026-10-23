@@ -1,0 +1,165 @@
+---
+import Base from '../layouts/Base.astro';
+import { site, href } from '../data/site';
+import TierStack from '../components/charts/TierStack.astro';
+import DecompositionFigure from '../components/charts/DecompositionFigure.astro';
+
+const terms = [
+  {
+    part: 'The analyzer and the service',
+    licence: 'Apache-2.0',
+    icon: 'ph-scales',
+    what: 'OSI open source. Use it, modify it, ship it, sell it. Attribution is all it asks for.',
+    why: 'It is how you check the method before you trust anything, so nothing may stand between you and running it.',
+  },
+  {
+    part: 'The library',
+    licence: 'BUSL-1.1',
+    icon: 'ph-certificate',
+    what: 'Source-available rather than open source. Reading it, auditing it, modifying it and building against it are free. Production use inside a shipped product needs terms.',
+    why: 'Apache-2.0 would let a competitor resell the library unchanged. A copyleft licence would make a commercial vendor refuse to link it. BUSL is the shape that lets you audit what you link without letting somebody else repackage it.',
+  },
+  {
+    part: 'The library, after 2030-11-01',
+    licence: 'Apache-2.0',
+    icon: 'ph-clock-clockwise',
+    what: 'Every version released under BUSL-1.1 converts to Apache-2.0 on the Change Date, or on the fourth anniversary of that version\u2019s first public release, whichever comes first.',
+    why: 'The conversion is what makes this a delayed open-source release rather than a permanent restriction.',
+  },
+];
+
+const grants = [
+  ['Read the source', 'yes', 'Both halves, always, with no registration and no account.'],
+  ['Audit it before you link it', 'yes', 'The SPDX identifier is on every file, and the licence text is in the repository.'],
+  ['Modify it for your own use', 'yes', 'Both halves.'],
+  ['Ship the analyzer in your product', 'yes', 'Apache-2.0, attribution only.'],
+  ['Evaluate the library against your workload', 'yes', 'Including in a shipped binary you are testing, for as long as you are evaluating it.'],
+  ['Ship the library inside a product you sell', 'needs terms', 'This is the one thing BUSL-1.1 restricts before the Change Date.'],
+  ['Use the hosted service', 'yes', 'Free, no account, nothing stored.'],
+];
+---
+
+<Base
+  title="Licence — PACE"
+  description="Apache-2.0 for the analyzer, BUSL-1.1 for the library with a conversion to Apache-2.0 on 2030-11-01, and a table of what that means in practice."
+>
+  <div class="wrap">
+    <section class="hero">
+      <div class="section-label">Licence</div>
+      <h1>Two licences, and the reason they are not the same one</h1>
+      <p class="lede">
+        The analyzer is Open Source Initiative open source. The library is source-available, which
+        is not the same thing and should not be described as if it were. This page states which is
+        which, what each one permits, and the single restriction that exists.
+      </p>
+      <p class="lede">
+        There is no paywall anywhere on this site, no evaluation form, and nothing you have to ask
+        permission to read or run. If you want the whole thing, the whole thing is
+        {' '}<a href={site.repo}>in the repository</a>.
+      </p>
+    </section>
+
+    <section>
+      <div class="section-label">The terms</div>
+      <h2>What each part is under</h2>
+      <div class="flow">
+        {
+          terms.map((t) => (
+            <div class="flow-row">
+              <div class="flow-icon"><i class={`ph ${t.icon}`} style="font-size:20px"></i></div>
+              <div>
+                <h3>
+                  {t.part} — <span class="mono">{t.licence}</span>
+                </h3>
+                <p>{t.what}</p>
+                <p><strong>Why:</strong> {t.why}</p>
+              </div>
+            </div>
+          ))
+        }
+      </div>
+      <DecompositionFigure />
+      <p>
+        What is being licensed is the split in that figure: the implementation that makes it hold
+        exactly, per sample, from a library somebody else's engine can link. The arithmetic itself is
+        textbook and is not claimed as anybody's property.
+      </p>
+    </section>
+
+    <section>
+      <div class="section-label">In practice</div>
+      <h2>What you may do, without asking</h2>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>What you want to do</th>
+              <th>Permitted</th>
+              <th>Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            {
+              grants.map(([what, allowed, note]) => (
+                <tr>
+                  <td>{what}</td>
+                  <td class={allowed === 'yes' ? 'ok' : 'warn'}>{allowed}</td>
+                  <td class="dim" style="white-space:normal">{note}</td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+      <div class="callout">
+        <div class="callout-title">The one restriction, stated without hedging</div>
+        <p>
+          Before the Change Date, BUSL-1.1 permits
+          {' '}<em>non-production</em> use of the library. Production use inside a product you ship
+          needs a grant. Everything else on the table above is free, and the source is public so you
+          can decide for yourself whether it is worth a conversation before you ship it.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">What the licence does not cover</div>
+      <h2>Three things worth knowing</h2>
+      <TierStack />
+      <div class="grid-3">
+        <div class="panel">
+          <h3><i class="ph ph-plugs"></i> Your integration is yours</h3>
+          <p>
+            The code you write around PACE — your profiler, your UI, your model — is not touched by
+            either licence. Nothing here is viral, and neither licence reaches into your source tree.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-database-slash"></i> The service collects nothing</h3>
+          <p>
+            There is no account, no telemetry and no stored trace. That is not a policy that could
+            change in a privacy notice; it is what the code does, and you can read it.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-user"></i> One person licenses it</h3>
+          <p>
+            The Licensor is PACE, which in practice means one maintainer. There is no legal
+            department, no procurement process and no EULA beyond the text in the repository.
+          </p>
+        </div>
+      </div>
+      <p>
+        The exact terms, the Additional Use Grant and the file header a source file must carry are in
+        {' '}<a href={`${site.repo}/blob/main/pace-sdk/LICENSING.md`}>LICENSING.md</a>, and the
+        licence texts themselves are
+        {' '}<a href={`${site.repo}/blob/main/pace-sdk/LICENSE`}>in the repository</a>. The
+        analyzer&rsquo;s Apache-2.0 text is alongside it.
+      </p>
+      <p>
+        Questions about any of this, including production terms:
+        {' '}<a href={`mailto:${site.contact}`}>{site.contact}</a>.
+      </p>
+    </section>
+  </div>
+</Base>

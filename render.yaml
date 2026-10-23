@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The service's own manifest. Render reads this file directly, so the deployed
+# configuration is in the repository rather than only in a dashboard: what is
+# running can be compared with what is committed.
+#
+# One service, on purpose. A Render workspace gets 750 free instance hours per
+# calendar month across every free service, and a month is 730-744 hours, so
+# exactly one always-on free service fits. Everything the service does lives on
+# this one instance rather than being split across several.
+services:
+  - type: web
+    name: pace-service
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    branch: main
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # Render also injects PORT; stating it here keeps the two in step.
+      - key: PORT
+        value: "8080"

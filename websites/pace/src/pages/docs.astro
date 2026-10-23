@@ -1,0 +1,264 @@
+---
+import Base from '../layouts/Base.astro';
+import { site, href } from '../data/site';
+import { decomposition, measurements, fine } from '../data/measurements';
+import FormatFlow from '../components/charts/FormatFlow.astro';
+import DecompositionFigure from '../components/charts/DecompositionFigure.astro';
+
+const formats = [
+  { name: 'PACE JSONL', origin: 'the SDK’s own writer', split: 'full three-way split' },
+  { name: 'Chrome Trace Event', origin: 'the standard trace format', split: 'dur only, no split' },
+  { name: 'perf sched timehist', origin: 'perf’s scheduling analysis', split: 'derived, not measured' },
+  { name: 'perf trace', origin: 'perf’s event trace', split: 'dur only, no split' },
+];
+
+const codes = [
+  ['io-error', 'the trace could not be read'],
+  ['parse-error', 'the trace is malformed where it was read'],
+  ['format-unknown', 'no parser recognised the file'],
+  ['empty-trace', 'the invariant holds vacuously, so verify fails'],
+  ['unsupported-output', 'the requested output format does not exist'],
+  ['write-error', 'the report could not be written'],
+  ['invalid-argument', 'a flag or a value is not usable'],
+];
+
+const api = [
+  ['pace_config_init(&cfg)', 'fills a config with the documented defaults; call this before touching any field'],
+  ['pace_session_create(&cfg, &session)', 'allocates a session; the only call that allocates'],
+  ['pace_session_register_thread(session, &thread)', 'once per thread you intend to sample'],
+  ['pace_session_sample(session, thread, &sample)', 'one sample on the calling thread; no allocation'],
+  ['pace_session_stats(session, &stats)', 'the tier, thread count, sample count, degraded count and whether the eBPF tier attached'],
+  ['pace_session_destroy(session)', 'invalidates every thread handle'],
+];
+---
+
+<Base
+  title="Docs — PACE"
+  description="The trace formats PACE reads, the C API, the CLI, the error codes, and the invariant the analyzer enforces."
+>
+  <div class="wrap">
+    <section class="hero">
+      <div class="section-label">Documentation</div>
+      <h1>The reference, in one place</h1>
+      <p class="lede">
+        Everything here is derived from the repository at
+        {' '}<span class="mono">{site.repo.replace('https://github.com/', '')}</span>. Where a figure
+        appears, it is generated from a committed measurement artifact at build time.
+      </p>
+      <div class="cta-row">
+        <a class="btn" href={`${site.repo}/blob/main/pace-sdk/docs/INTEGRATION.md`}>
+          <i class="ph ph-book"></i>
+          Integration guide
+        </a>
+        <a class="btn" href={`${site.repo}/blob/main/pace-sdk/docs/ACCURACY.md`}>
+          <i class="ph ph-ruler"></i>
+          Accuracy method
+        </a>
+        <a class="btn" href={`${site.repo}/blob/main/pace-analyzer/README.md`}>
+          <i class="ph ph-terminal-window"></i>
+          Analyzer README
+        </a>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">The invariant</div>
+      <h2>What every consumer can rely on</h2>
+      <DecompositionFigure />
+      <p>
+        Two functions enforce it, and they are the two a consumer should gate on:
+        {' '}<span class="mono">pace verify</span> at the command line, which exits non-zero when a
+        trace breaks the rule, and the analyzer's own check as it reads, which refuses to report a
+        trace it could not verify.
+      </p>
+    </section>
+
+    <section>
+      <div class="section-label">Formats</div>
+      <h2>What the analyzer reads, and what each format can support</h2>
+      <FormatFlow />
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Format</th>
+              <th>Where it comes from</th>
+              <th>What it can carry</th>
+            </tr>
+          </thead>
+          <tbody>
+            {
+              formats.map((f) => (
+                <tr>
+                  <td>{f.name}</td>
+                  <td class="dim">{f.origin}</td>
+                  <td class={f.split.startsWith('full') ? 'ok' : 'dim'}>{f.split}</td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+      <div class="callout">
+        <div class="callout-title">A format with no split is reported as having none</div>
+        <p>
+          A plain Chrome trace gives the analyzer a duration and nothing else. It prints a dash where
+          the preempted and blocked figures would go, draws an empty bar, and raises no findings
+          against that thread. The analyzer also counts and skips malformed lines rather than failing
+          the whole parse, and reports the count it skipped.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">C API</div>
+      <h2>The calls, in the order you make them</h2>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Call</th>
+              <th>What it does</th>
+            </tr>
+          </thead>
+          <tbody>
+            {
+              api.map(([call, what]) => (
+                <tr>
+                  <td><span class="mono">{call}</span></td>
+                  <td class="dim" style="white-space:normal">{what}</td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+      <div class="grid-2">
+        <div class="panel">
+          <h3><i class="ph ph-users"></i> The threading contract</h3>
+          <p>
+            The public header states which calls are thread-safe, that an observer must not re-enter
+            the session, and that <span class="mono">destroy</span> invalidates every thread handle.
+            Read it before you call any of this from more than one place.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-flag"></i> Saying "unknown" instead of zero</h3>
+          <p>
+            A sample carries a <span class="mono">struct_size</span> and flags
+            {' '}<span class="mono">PACE_SAMPLE_F_HAS_PREEMPTED</span> and
+            {' '}<span class="mono">PACE_SAMPLE_F_HAS_BLOCKED</span>, so the API can report "this
+            platform cannot tell you" rather than a zero that looks like a measurement.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">Analyzer</div>
+      <h2>The commands and their exit codes</h2>
+      <div class="grid-2">
+        <div class="panel">
+          <h3><i class="ph ph-terminal-window"></i> Commands</h3>
+          <pre><code>{`pace analyze <trace> [--output report.html]
+pace inspect <trace>
+pace verify <trace>
+pace convert <in> --to pace|chrome`}</code></pre>
+          <p>
+            <span class="mono">analyze</span> and <span class="mono">verify</span> read the trace line
+            by line, so memory is proportional to the thread count rather than the sample count.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-warning-octagon"></i> Error codes</h3>
+          <div class="table-scroll">
+            <table>
+              <tbody>
+                {
+                  codes.map(([code, what]) => (
+                    <tr>
+                      <td><span class="mono">{code}</span></td>
+                      <td class="dim" style="white-space:normal">{what}</td>
+                    </tr>
+                  ))
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">Accuracy</div>
+      <h2>Every measurement the harness makes, and what it is gated on</h2>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Measurement</th>
+              <th>n</th>
+              <th>Median</th>
+              <th>p95</th>
+              <th>Gate</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {
+              measurements.map((m) => (
+                <tr>
+                  <td>{m.short}</td>
+                  <td class="dim">{m.n}</td>
+                  <td>{fine(m.median)}</td>
+                  <td>{fine(m.p95)}</td>
+                  <td class="dim">{fine(m.threshold)}</td>
+                  <td class={m.skipped ? 'dim' : m.passed ? 'ok' : 'bad'}>
+                    {m.skipped ? 'reported' : m.passed ? 'pass' : 'fail'}
+                  </td>
+                </tr>
+              ))
+            }
+            <tr>
+              <td>decomposition balance</td>
+              <td class="dim">{decomposition.samples.toLocaleString('en-US')}</td>
+              <td>0.0000 %</td>
+              <td>0.0000 %</td>
+              <td class="dim">0.0100 %</td>
+              <td class="ok">pass</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Median and p95 are relative errors against a source that does not come from PACE, and the
+        gate is the threshold this repository fails a build on. The full method, the environment
+        artifact and the raw per-run records are in
+        {' '}<a href={`${site.repo}/blob/main/pace-sdk/results/accuracy.json`}>the committed
+        artifact</a>.
+      </p>
+    </section>
+
+    <section>
+      <div class="section-label">Also on this site</div>
+      <h2>Where to go next</h2>
+      <div class="card-row">
+        <div class="panel">
+          <h3><i class="ph ph-download-simple"></i> Install</h3>
+          <p>Packages, the toolchain, and the three things that go wrong.</p>
+          <p><a href={href('install/')}>Install it</a></p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-activity"></i> The hosted service</h3>
+          <p>The same analyzer over HTTP, so you can skip the build.</p>
+          <p><a href={href('service/')}>See the API</a></p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-flask"></i> Research</h3>
+          <p>The method, the evidence, and where the claim stops.</p>
+          <p><a href={href('research/')}>Read the research</a></p>
+        </div>
+      </div>
+    </section>
+  </div>
+</Base>

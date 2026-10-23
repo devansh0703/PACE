@@ -28,3 +28,10 @@ pace-sdk/src/bpf/*.skel.h
 # Python's bytecode cache
 __pycache__/
 *.pyc
+
+# Credentials. This file holds the Render API key and is read by the
+# deployment scripts. It is a secret that happens to live in the repository
+# root, so it is ignored rather than committed.
+.env
+.env.*
+!.env.example

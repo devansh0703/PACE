@@ -1,0 +1,47 @@
+{
+  "tool": "collect_overhead",
+  "note": "per-call cost of the public API, from the SDK's own harnesses; regenerate with pace-sdk/scripts/collect_overhead.py",
+  "example": {
+    "harness": "examples/pace_overhead.c",
+    "calls": 10000,
+    "tier": "clock (derived cycles)",
+    "min_ns": 543,
+    "median_ns": 566,
+    "p99_ns": 630,
+    "max_ns": 6657
+  },
+  "benchmarks": [
+    {
+      "harness": "bench/bench_sample.cc (Google Benchmark)",
+      "benchmark": "BM_SampleOverhead/real_time",
+      "repetitions": 5,
+      "median_ns": 604.7453384441702,
+      "time_unit": "ns",
+      "mean_ns": 604.491436551158
+    },
+    {
+      "harness": "bench/bench_sample.cc (Google Benchmark)",
+      "benchmark": "BM_SessionLifecycle",
+      "repetitions": 5,
+      "median_ns": 18593.378739810007,
+      "time_unit": "us",
+      "mean_ns": 18593.866712218252
+    },
+    {
+      "harness": "bench/bench_sample.cc (Google Benchmark)",
+      "benchmark": "BM_ThreadRegistration",
+      "repetitions": 5,
+      "median_ns": 116.33139457799975,
+      "time_unit": "us",
+      "mean_ns": 116.15380545824702
+    }
+  ],
+  "environment": {
+    "uname": "Linux 7.3.0-9-generic x86_64",
+    "compiler": "/usr/bin/cc",
+    "binaries": {
+      "overhead": "build-ci/examples/pace_overhead",
+      "benchmark": "build-ci/bench/pace_bench_sample"
+    }
+  }
+}

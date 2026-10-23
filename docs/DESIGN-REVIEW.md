@@ -1,5 +1,14 @@
 # Design review — PACE
 
+
+> **Historical record.** This review describes the product as it was when it was written,
+> and it is dated so a reader can tell. Two things changed after it: the brief's two-product
+> framing was a misreading, so the library, the analyzer and the hosted service are one
+> product with one site; and the project stopped being a licensing business, so the
+> commercial-licence reasoning in some of these reviews no longer reflects how the product is
+> published. Where the two disagree, [README.md](../README.md) and [PLAN.md](../PLAN.md) are
+> current and this file is not.
+
 Written 2026-10-21 against the sites as they were built that day.
 Independent senior product-designer review of the PACE product sites and
 the analyzer's report output, run as the gstack `design` phase against what

@@ -303,10 +303,14 @@ def main() -> int:
         for f in failures:
             print(f"  {f}")
         print(
-            "\nthe measured numbers come from pace-sdk/results/accuracy.json; "
-            "regenerate the site with"
+            "\nthe measured numbers come from pace-sdk/results/accuracy.json and "
+            "pace-sdk/results/overhead.json; regenerate the site with"
         )
-        print("  python3 websites/scripts/update_site_accuracy.py")
+        print("  cd websites/pace && npm run build")
+        print(
+            "the site renders its figures from those artifacts, so a document "
+            "that disagrees is the document that is wrong"
+        )
         return 1
 
     print(

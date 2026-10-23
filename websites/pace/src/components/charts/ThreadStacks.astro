@@ -1,0 +1,66 @@
+---
+// Every thread in the recorded contended run, sorted by the share of its wall
+// time it lost to preemption. Stacked, 100 % wide, so the shape of the run is
+// visible at a glance: 48 threads, all losing roughly the same 60 %.
+import { threads, run, pct, share } from '../../data/measurements';
+
+const width = 900;
+const left = 62;
+const right = 88;
+const rowHeight = 8;
+const gap = 1.5;
+const usable = width - left - right;
+const height = threads.length * (rowHeight + gap) + 34;
+
+const median = (() => {
+  const sorted = [...threads].map((t) => t.preemptPct).sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+})();
+
+const groupTotal = share(run.totals.preemptedNs, run.totals.wallNs);
+---
+
+<figure class="chart">
+  <figcaption>
+    <span>All {threads.length} threads, sorted by preempted share of wall time</span>
+    <span class="src">pace-analyzer/results/real-trace-report.txt · {run.samples.toLocaleString('en-US')} samples</span>
+  </figcaption>
+  <div class="plot">
+    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Stacked bars for ${threads.length} threads, each losing between ${pct(threads[threads.length - 1].preemptPct)} and ${pct(threads[0].preemptPct)} of its wall time to preemption`}>
+      <g>
+        {
+          threads.map((t, i) => {
+            const y = i * (rowHeight + gap) + 20;
+            const onCpu = (share(t.onCpuNs, t.wallNs) / 100) * usable;
+            const preempted = (share(t.preemptedNs, t.wallNs) / 100) * usable;
+            const blocked = (share(t.blockedNs, t.wallNs) / 100) * usable;
+            return (
+              <g>
+                <rect x={left} y={y} width={usable} height={rowHeight} fill="var(--bar-track)" />
+                <rect x={left} y={y} width={onCpu} height={rowHeight} fill="var(--accent)" />
+                <rect x={left + onCpu} y={y} width={preempted} height={rowHeight} fill="var(--sev-critical)" />
+                <rect x={left + onCpu + preempted} y={y} width={blocked} height={rowHeight} fill="var(--sev-info)" />
+                <text x={left - 8} y={y + rowHeight - 0.5} font-size="9" text-anchor="end">{t.tid}</text>
+                <text x={left + usable + 8} y={y + rowHeight - 0.5} font-size="9">{t.preemptPct.toFixed(1)}%</text>
+              </g>
+            );
+          })
+        }
+      </g>
+
+      <g>
+        <line x1={left} y1="8" x2={left + usable} y2="8" stroke="var(--line-strong)" stroke-dasharray="2 3" />
+        <text x={left + usable} y="4" font-size="9" text-anchor="end">run total {pct(groupTotal)} preempted · thread median {pct(median)}</text>
+      </g>
+    </svg>
+  </div>
+  <div class="chart-note">
+    <p>
+      The point is how flat it is. This is not one unlucky thread; every thread in the run lost
+      about the same share, because the run asked for {threads.length} runnable threads on 16
+      hardware threads. No amount of code optimisation changes that line, and the analyzer says
+      so in its first finding.
+    </p>
+  </div>
+</figure>

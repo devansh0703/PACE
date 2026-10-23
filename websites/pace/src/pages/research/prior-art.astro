@@ -1,0 +1,171 @@
+---
+import Base from '../../layouts/Base.astro';
+import { site, href } from '../../data/site';
+import CompareMatrix from '../../components/charts/CompareMatrix.astro';
+import CostBars from '../../components/charts/CostBars.astro';
+import DecompositionFigure from '../../components/charts/DecompositionFigure.astro';
+
+const landscape = [
+  {
+    tool: 'Intel VTune Threading Analysis',
+    overlap: 'The closest overlap. It already separates preemption wait from inactive sync wait on Linux.',
+    difference: 'Intel-branded and a tool rather than a component. It cannot be linked into somebody else\u2019s engine, and its output is VTune\u2019s model rather than yours.',
+  },
+  {
+    tool: 'Perfetto',
+    overlap: 'A genuinely embeddable C and C++ SDK, with low overhead and OS scheduling states. The most credible competitor.',
+    difference: 'It is a trace. Buffers, IPC and a background writer are the design, and the consumer parses a trace afterwards rather than reading a counter in-process.',
+  },
+  {
+    tool: 'Arm Streamline',
+    overlap: 'System-wide profiling including scheduling analysis, on Linux and embedded targets.',
+    difference: 'A tool, and architecture-aligned. Not a portable component you vendor into your own product.',
+  },
+  {
+    tool: 'easy_profiler, nTrace and similar',
+    overlap: 'Low-overhead embeddable libraries that already emit thread context-switch events.',
+    difference: 'They report the events. Deciding what the resulting time means, and proving the arithmetic holds, is the part that is missing.',
+  },
+];
+
+const searches = [
+  ['Tool survey', 'done', 'The five tools above, read from their own documentation rather than from their marketing.'],
+  ['Literature', 'done', 'The measurement method follows the published benchmarking rules; the attribution itself relies on documented OS primitives.'],
+  ['Patent search', 'not done', 'The one patent the source brief cited is behind an account and could not be located. A full freedom-to-operate search is a precondition for any commercial licensing, and it has not been run.'],
+];
+---
+
+<Base
+  title="Prior art and the competitive posture — PACE"
+  description="Who already does this, where they are stronger, and the claim PACE actually makes after the premise it started from was found to be false."
+>
+  <div class="wrap">
+    <div class="breadcrumb"><a href={href()}>PACE</a> / <a href={href('research/')}>research</a> / prior art</div>
+    <section class="hero">
+      <div class="section-label">Research · prior art</div>
+      <h1>The premise this started from was false, and it is still on the record</h1>
+      <p class="lede">
+        PACE began with the belief that no existing profiler separates time-on-CPU from
+        time-lost-to-preemption. Intel VTune already does, and it has for a while. The correct
+        response to that is not to reword the marketing — it is to publish the correction and state
+        the narrower claim that survives, which is what this page does.
+      </p>
+    </section>
+
+    <section>
+      <div class="section-label">The comparison</div>
+      <h2>Where they overlap, and where they do not</h2>
+      <CompareMatrix />
+      <p>
+        Read the matrix as five separate claims rather than as a score. The two columns where the
+        incumbents lose are the two that matter: a component you link into your own product, and no
+        requirement for elevated privilege. Everything else is a distinction without a difference.
+      </p>
+    </section>
+
+    <section>
+      <div class="section-label">The landscape</div>
+      <h2>Each competitor, and the honest reason it is still a competitor</h2>
+      <div class="flow">
+        {
+          landscape.map((item) => (
+            <div class="flow-row">
+              <div class="flow-icon"><i class="ph ph-crosshair" style="font-size:20px"></i></div>
+              <div>
+                <h3>{item.tool}</h3>
+                <p>{item.overlap}</p>
+                <p><strong>Where PACE differs:</strong> {item.difference}</p>
+              </div>
+            </div>
+          ))
+        }
+      </div>
+      <div class="callout">
+        <div class="callout-title">The risk nobody should pretend away</div>
+        <p>
+          Every one of these vendors could add this capability themselves, and several have the
+          scheduler plumbing to do it faster than this project can. That is a real risk and it is
+          written down as one in the plan. What it does not do is make the measurement wrong — and a
+          measurement that other people can re-run is the only defence against it that holds.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">Cost, which is where the argument is winnable</div>
+      <h2>What the difference costs per sample</h2>
+      <CostBars />
+      <p>
+        The comparison at the top of the matrix is about capability; this one is about whether a
+        vendor can afford to leave it switched on. A trace-based SDK pays for a buffer and a writer
+        whether or not anybody reads the trace. A counter that returns in the hundreds of nanoseconds
+        can run on every sample of a production frame.
+      </p>
+    </section>
+
+    <section>
+      <div class="section-label">Prior art</div>
+      <h2>What was searched, and what was not</h2>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Search</th>
+              <th>State</th>
+              <th>What it found or why it stopped</th>
+            </tr>
+          </thead>
+          <tbody>
+            {
+              searches.map(([what, state, note]) => (
+                <tr>
+                  <td>{what}</td>
+                  <td class={state === 'done' ? 'ok' : 'warn'}>{state}</td>
+                  <td class="dim" style="white-space:normal">{note}</td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+      <div class="callout">
+        <div class="callout-title">The patent posture, stated plainly</div>
+        <p>
+          This design relies on operating-system primitives that are documented and public, which is
+          a materially different position from a patented mechanism. That is an argument, not a
+          clearance. No patent number is printed anywhere in this project, because the one the source
+          brief cited could not be retrieved and a number that cannot be checked is worse than no
+          number.
+        </p>
+      </div>
+      <DecompositionFigure />
+      <p>
+        What is being claimed as the contribution is the implementation and the evidence, not the
+        idea. The decomposition is textbook; making it hold exactly, per sample, from a library you
+        can link into somebody else's engine without privilege, is the part that took the work.
+      </p>
+    </section>
+
+    <section>
+      <div class="section-label">Next</div>
+      <h2>The claim in one paragraph</h2>
+      <p>
+        PACE is a counter. It measures a thread's wall time as the sum of the time it ran, the time
+        the scheduler took the core away, and the time it was not runnable. It is portable,
+        embeddable, privilege-free and in-process, and the arithmetic is verified on every sample
+        against sources that do not come from PACE. It is not the first tool to know the difference
+        between a preemption and a wait, and it does not claim to be.
+      </p>
+      <div class="cta-row">
+        <a class="btn primary" href={href('research/accuracy/')}>
+          <i class="ph ph-ruler"></i>
+          The accuracy method
+        </a>
+        <a class="btn" href={href('service/')}>
+          <i class="ph ph-activity"></i>
+          Test it on a trace
+        </a>
+      </div>
+    </section>
+  </div>
+</Base>

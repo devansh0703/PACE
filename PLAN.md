@@ -100,9 +100,15 @@ A CO-RE BPF program attached to `sched_wakeup` and `sched_switch`, counting the 
                               report: terminal + self-contained HTML
 ```
 
-### 2. Product 1 — `pace-sdk` (commercial, licensed)
+### 2. The library — `pace-sdk`
 
 Repository: `pace-sdk/`. C11 + C++17. CMake build with install/export.
+
+This is one artifact of one product, not a product of its own. The framing that
+produced the first version of this plan — two products, one commercial and one
+open source, each with a site of its own — was a misreading of the brief. There
+is one product, and these are the parts of it: the library that measures, the
+analyzer that proves the measurement, and the service that runs the analysis.
 
 **Public C API** (`include/pace/pace.h`), ABI-stable, opaque handles only. `pace_sample` and `pace_config` both carry a `struct_size` so the ABI can grow without breaking a licensee.
 
@@ -190,9 +196,9 @@ pace-sdk/
 
 **Packaging.** `find_package(pace)` via `install(EXPORT)` + `CMakePackageConfigHelpers`; vcpkg port and a ConanCenter recipe; GitHub Actions CI on Linux/Windows/macOS with ccache.
 
-### 3. Product 2 — `pace-analyzer` (open source, Apache-2.0)
+### 3. The analyzer — `pace-analyzer` (Apache-2.0)
 
-Repository: `pace-analyzer/`. Rust 2021, one crate with a library and a `pace` binary. Open source on purpose: it is the proof of accuracy, the adoption funnel, and the thing a prospective licensee evaluates before paying.
+Repository: `pace-analyzer/`. Rust 2021, one crate with a library and a `pace` binary. Open source, and deliberately the free half of the product: it is the proof of accuracy, the adoption funnel, and the thing a reader evaluates before trusting any of the other parts.
 
 **Input formats** (all parsed, none invented):
 
@@ -264,26 +270,95 @@ The preempted-vs-sch-delay gap is **definitional, not a defect**: the kernel's `
 
 **Method.** N ≥ 30 independent runs per configuration; median and p95 reported; `taskset` for core pinning; the `intel_pstate` governor and turbo state recorded in a machine-readable environment artifact; the Google paper *"Rigorous Benchmarking in C++"* rules applied. The result artifact is `pace-sdk/results/accuracy.json`.
 
-### 5. Websites
+### 5. Website
 
-Two separate sites, one per product, in `websites/`.
+One site, at `websites/pace/`. The earlier plan had two sites in two Astro
+projects, one per product; that followed from the same misreading as section 2
+and was collapsed into one site with one nav. The URL is
+https://devansh0703.github.io/PACE/ and it is a single deployable.
 
-- `websites/pace-sdk/` — the commercial product. Audience: product leaders at developer-tool firms. Story: the gap, the proof, the integration, the evaluation licence.
-- `websites/pace-analyzer/` — the open-source product. Audience: performance engineers. Story: the tool, the formats it reads, the report it produces.
+**Audiences, on one page each.** Product leaders and engineers decide on the
+same site, so the story is split by what each is there for rather than by what
+each component is: the product page is the commercial half, the research pages
+are the method half, and they cross-link rather than live in separate builds.
 
 **Stack.** Astro 7.4.1, deployable to GitHub Pages. Vanilla CSS. Self-hosted fonts via `@fontsource/ibm-plex-mono` and `@fontsource/ibm-plex-sans` 5.3.0. Icons via `@phosphor-icons/web` 2.1.2.
 
+**Light is the default.** The theme is applied by an `is:inline` script in the
+head that reads a stored choice and then the OS preference, falling back to
+light. A bundled script is deferred and flashes the wrong theme on first paint,
+which is why the bootstrap is inline. Both palettes live as custom properties in
+`wire-terminal.css` and no component branches on the mode.
+
+**Every figure is generated.** `src/data/measurements.ts` reads
+`pace-sdk/results/accuracy.json`, `pace-sdk/results/overhead.json` and
+`pace-analyzer/results/real-trace-report.txt` at build time, and the pages
+render what it returns. A missing artifact fails the build rather than shipping
+a page with a blank where a measurement belongs, and
+`websites/scripts/check_site_accuracy.py` re-checks the **built** HTML against
+the artifact in CI.
+
 **Design direction — "Wire Terminal"**, a field-instrument aesthetic:
 
-- Ground `#131311` (warm charcoal), accent `#e8a33d` (amber). Saturated colour only for severity.
+- Ground `#131311` (warm charcoal) in dark, `#f3f1ea` (warm paper) in light, accent `#e8a33d` (amber). Saturated colour only for severity.
 - IBM Plex Mono for structure and all numerics; IBM Plex Sans for prose.
 - Phosphor icons, light weight. No Lucide, no emoji.
 - Radii 3 px. Elevation from borders and contrast, never soft shadows.
 - Banned: purple/teal/blue gradients, glassmorphism, badge pills above a hero, all-caps mono kickers above every heading, three-identical-card layouts, numbered `01/02/03` step lists, stat banner rows, coloured left borders, pulsing dots, emoji icons.
+- The contract is executable: `websites/scripts/check_design_contract.py` scans every page, component and stylesheet at any depth, and CI runs it.
 
-**Content.** Every claim on both sites is backed by a number produced by the benchmark suite, with the measurement environment attached. The SDK site shows the contended-run example — 654 ms on-CPU, 1.22 s preempted, 131 ms blocked, 60.8 % preempted — because it is the clearest possible statement of the problem, and it is real.
+**Charts.** Both the site and the analyzer's report draw their charts as
+build-time inline SVG. This is deliberate rather than lazy: the report must be
+one offline file with nothing to fetch, a canvas charting library would add a
+runtime dependency to a static site, and a chart the reader cannot inspect is
+not evidence.
 
-### 6. Delivery order
+### 6. The hosted service
+
+Repository: `service/`. One free-tier web instance on Render, at
+https://pace-service.onrender.com. It is a transport in front of the analyzer,
+not a second product: it embeds `pace-analyzer` by path, so the numbers it
+returns are the numbers the command line returns.
+
+| | |
+|---|---|
+| `GET /health` | liveness, version, the limits, uptime |
+| `GET /` | a form, so a person can paste a trace without reading an API |
+| `POST /analyze` | the trace in the body, a report out; `?format=terminal\|html\|json`, `?verify=1` |
+
+**One instance, on purpose.** A Render workspace gets 750 free instance hours
+per calendar month across every free service, and a month is 730–744 hours, so
+exactly one always-on free service fits. Everything lives on this instance.
+
+**The limits are the host's, and the service publishes them** rather than letting
+a caller discover them by being rejected: an 8 MiB body, a million samples, a
+20 s budget, one request at a time. A free instance has a tenth of a core and
+half a gigabyte of memory, so the body cap is enforced from `Content-Length`
+before buffering and again from the bytes read, and an analysis past its budget
+is answered with 504.
+
+**Nothing is stored.** The trace is read into the request's buffer and dropped
+with it. There is no database, and the free host has no persistent disk for a
+trace to reach even by accident.
+
+**Kept awake by an uptime monitor**, not by keeping it busy: a free Render
+service spins down after fifteen minutes without a request, so UptimeRobot
+checks `/health` every five minutes. The site's service page reads that state
+from `/health` at request time rather than rendering a build-time claim, and it
+says plainly when the service is unreachable instead of implying the method is
+broken.
+
+**Scheduling lives in GitHub Actions**, not on the host: Render's cron jobs are
+a paid instance type, so a free workspace schedules nothing. The scheduled job
+calls the service over HTTP, which keeps the one-instance budget intact and
+uses a scheduler that already exists in the repository.
+
+**Why it exists.** To see what PACE says about a trace, a reader would otherwise
+need a Rust toolchain, a clone and a build. That is a lot of commitment for one
+question. Every limit above is a reason to run `pace analyze` locally rather
+than a property of the measurement.
+
+### 7. Delivery order
 
 Each step ends with something runnable and committed.
 
@@ -291,34 +366,41 @@ Each step ends with something runnable and committed.
 2. `pace-sdk`: the eBPF tier. **DONE.** The tier was written against the `tracepoint/` section form, which attaches through a BPF link onto a perf event. The kernel gates that link on `bpf_capable()` in the *initial* user namespace, so on a host with a nested one it failed with `EACCES` even for uid 0 holding every capability, and the tier had never attached. It now uses `raw_tracepoint/` sections, which are opened with `BPF_RAW_TRACEPOINT_OPEN` and are gated differently. The raw form's arguments are the tracepoint's proto arguments, and the counts were measured rather than assumed: `sched_wakeup` 1, `sched_switch` 2, `sched_process_exit` 2. `tests/verify/verify_ebpf.c` attaches the tier, runs 32 contending spinners and reads the tier's own maps back: 22 of the 32 were preempted, 73.5 ms of 75.7 ms of wall time, and the decomposition held exactly.
 3. `pace-sdk`: JSONL trace writer, C++ wrapper, examples. **DONE.**
 4. `pace-sdk`: Windows and macOS backends. **DONE.** The Windows backend uses `GetThreadTimes` and `QueryThreadCycleTime`; the macOS backend uses `CLOCK_THREAD_CPUTIME_ID` and the Mach `thread_info` interface. The Windows suite was run under Wine: 77 unit checks, 110 lifecycle checks and 29 concurrency checks, 0 failures. The macOS backend was cross-compiled to Mach-O arm64 against the real Mach headers, and its test suite runs in CI. Neither platform can do the three-way split without privilege, so their samples carry neither `PACE_SAMPLE_F_HAS_PREEMPTED` nor `PACE_SAMPLE_F_HAS_BLOCKED`, and the test suite asserts that.
-5. `pace-analyzer`: crate, parsers, attribution model, terminal report, HTML report, `verify`, benches. **DONE.**
-6. Benchmarks and verification: the accuracy harness with real ground truth, results committed. **DONE.**
-7. Websites: both sites, with the real measured numbers. **DONE.**
-8. Licensing and packaging: BUSL text, vcpkg port, Conan recipe, `find_package` docs, integration guide. **DONE.** The Conan recipe was verified end to end with `conan create`, and a separate consumer project builds against the installed tree with `find_package(pace)` and runs.
-9. CI: GitHub Actions on Linux/Windows/macOS, running the accuracy harness and committing its artifact. **DONE.** One repository, one checkout per job. The SDK builds and tests on all three platforms, the analyzer on all three, and the accuracy harness runs the cross-checks against the kernel's own accounting and against perf.
+5. `pace-analyzer`: crate, parsers, attribution model, terminal report, HTML report, `verify`, benches. **DONE.** The report now draws four inline-SVG charts — the run's split, the preemption band, every thread sorted, and the phases — checked by `tests/report_charts.rs`, including that a zero-length window cannot emit a `NaN` coordinate.
+6. Benchmarks and verification: the accuracy harness with real ground truth, results committed. **DONE.** A second artifact, `results/overhead.json`, holds the per-call cost and is produced by `scripts/collect_overhead.py` rather than typed into a document.
+7. Website: one site, with the real measured numbers. **DONE.** Two Astro projects in two directories were collapsed into one, because one product does not get two navs.
+8. The hosted service: `service/`, the analyzer over HTTP, deployed as one free instance and kept awake by an uptime monitor. **DONE.**
+9. Licensing and packaging: BUSL text, vcpkg port, Conan recipe, `find_package` docs, integration guide. **DONE.** The Conan recipe was verified end to end with `conan create`, and a separate consumer project builds against the installed tree with `find_package(pace)` and runs.
+10. CI: GitHub Actions on Linux/Windows/macOS, running the accuracy harness and committing its artifact. **DONE.** One repository, one checkout per job. The SDK builds and tests on all three platforms, the analyzer on all three, and the accuracy harness runs the cross-checks against the kernel's own accounting and against perf.
 
-### 7. Explicitly not in scope
+### 8. Explicitly not in scope
 
 - Sampling profilers (stack unwinding, symbolisation) — that is the vendor's product, not ours. PACE supplies the time attribution those profilers cannot make.
 - GPU, cache and memory-event attribution — different counters, different product.
 - eBPF-based continuous production profiling — a different buyer with different requirements.
-- A hosted SaaS offering — the brief's vehicle is licensing to tool vendors.
 - Windows and macOS three-way splits without privilege — documented as a limitation rather than faked.
 - A streaming analyzer mode for traces above ~10 M samples — **DONE.** `analyze` and `verify` read the trace line by line and fold each sample into its thread's aggregate, so the memory is proportional to the number of threads and not the number of samples. Measured on a trace of about a hundred thousand samples: 3.4 MB against 16.8 MB for the retaining path. The two paths produce the same numbers, and `tests/summarised_agreement.rs` checks that they agree on every total, every thread, every phase and the decomposition check. The summarised path checks the invariant as it reads, so the report never says "exact" for a trace it did not check.
 
-### 8. Binding decisions
+**Not in scope, and stated because it changed:** the brief's vehicle was a
+licensing business. It is not one any more. There is no commercial licence to
+buy, no evaluation form and nothing on the site gated behind a price; the
+library is source-available under BUSL-1.1, the analyzer and the service are
+Apache-2.0, and the service is hosted for free because the free tier of one
+host is enough for it.
+
+### 9. Binding decisions
 
 - **D1**: Three tiers, each an addition to the one below, and none of them required. A product that requires root is unshippable inside a customer's engine.
 - **D2**: Reference cycles are the portable unit; core cycles are the local unit. Both are reported, always labelled.
 - **D3**: Preempted cycles are an explicit *estimate*, computed from a measured frequency, and the analyzer shows the estimate's inputs.
-- **D4**: `pace-analyzer` is Apache-2.0 open source; `pace-sdk` is BUSL 1.1 with a paid-licence use grant. The open analyzer is the proof and the funnel.
+- **D4**: `pace-analyzer` and `service` are Apache-2.0 open source; `pace-sdk` is BUSL-1.1, which is source-available and converts to Apache-2.0 on the Change Date. The open analyzer is the proof and the funnel, and the service exists so the funnel has no build step. The site and this plan describe BUSL as source-available rather than as open source, because describing it as the latter would be the one false claim in a repository whose whole value is that its claims are checkable.
 - **D5**: PACE integrates into the vendor's profiler in-process through a C callback/observer API; the file format is a secondary path.
 - **D6**: No hand-rolled algorithms where a maintained library exists. **Amended by the CEO review**: the analyzer's CSV and text parsers are hand-written, because a `regex` over untrusted trace files carries a catastrophic-backtracking risk that a dependency-free 40-line parser does not, and the report must be a single offline file. **Amended again by the dependency review**: the reasoning was wrong, because the `csv` crate is not `regex` — it is an RFC 4180 state machine with no backtracking. The decision stands for a different and better reason: the `perf trace` and `perf sched timehist` formats are not CSV at all, so no CSV library applies. The review also found the `perf trace` parser matched no real perf output, and rewrote it.
 - **D7**: Every published accuracy number comes from the committed verification harness, with the environment artifact attached.
 - **D8** (new, from the CEO review): The product's verified core is the **time** attribution. The cycle figures are a labelled convenience. The naming, the API and the website follow the struct.
 - **D9** (new, from the CEO review): The differentiation is *portable, embeddable, privilege-free, in-process* — never "nobody can do this".
 
-### 9. Risks and the plan for each
+### 10. Risks and the plan for each
 
 | Risk | Impact | Plan |
 |---|---|---|
@@ -332,8 +414,12 @@ Each step ends with something runnable and committed.
 | Vendors will not integrate a third-party library | Adoption risk | Callback API, zero-privilege tier, C ABI, no allocation on the hot path, and a one-file integration guide |
 | A thread's TID is recycled and the cached fd points at another thread | Wrong attribution | **Open.** The fix is to key the registry on (tid, start_time) from `/proc/<tid>/stat` field 22 and re-validate on sample |
 | A trace above ~10 M samples exhausts memory | Analyzer failure | **Open.** A streaming aggregation mode is deferred with the limit documented |
+| The hosted service is a free instance with a tenth of a core and half a gigabyte | A large trace times out there | **Closed by publishing the limits** rather than hiding them. The service reports its body cap, sample cap and budget on `/health`, and every rejection names the limit in the message. The site says the same, and points at `pace analyze` for a trace that exceeds them. |
+| A free instance sleeps after fifteen minutes idle | The first request takes a minute | **Closed with an uptime monitor** on `/health` every five minutes, and by the site reporting the service's state at request time instead of a build-time claim. |
+| A free workspace schedules nothing: Render cron jobs are a paid instance type | No host-side scheduler | **Closed by scheduling in GitHub Actions**, which already exists in the repository and calls the service over HTTP. |
+| The 750 free instance hours are shared across the workspace | A second service would not fit | **Closed by running exactly one.** Everything the hosted product does lives on that instance, and a second would be a 750-hour overrun. |
 
-### 10. Definition of done
+### 11. Definition of done
 
 - `pace-sdk` builds clean with `-Wall -Wextra -Wpedantic -Wshadow -Wconversion` on gcc 15 and clang 22. **DONE.**
 - 76 unit checks pass unprivileged, 77 as root. **DONE.**

@@ -1,0 +1,82 @@
+---
+// The three tiers as nested capability bands: each one is an addition to the
+// one below, and none of them is required. This is a diagram of the design
+// decision, not a measurement.
+type Tier = {
+  name: string;
+  needs: string;
+  adds: string;
+  colour: string;
+};
+
+const tiers: Tier[] = [
+  {
+    name: 'Tier 0 — clocks and procfs',
+    needs: 'nothing',
+    adds: 'on-CPU, preempted, blocked, wall, reference cycles',
+    colour: 'var(--accent)',
+  },
+  {
+    name: 'Tier 1 — hardware counters',
+    needs: 'CAP_PERFMON',
+    adds: 'measured core cycles instead of a frequency model',
+    colour: 'var(--sev-info)',
+  },
+  {
+    name: 'Tier 2 — scheduler events over eBPF',
+    needs: 'privilege + BTF',
+    adds: 'switch counts measured rather than inferred',
+    colour: 'var(--sev-ok)',
+  },
+];
+
+const width = 900;
+const rowHeight = 62;
+const height = tiers.length * rowHeight + 18;
+---
+
+<figure class="chart">
+  <figcaption>
+    <span>Three tiers, one API, each an addition to the one below</span>
+    <span class="src">docs/OS-PRIMITIVES.md · pace-sdk/README.md</span>
+  </figcaption>
+  <div class="plot">
+    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Three tiers: clocks and procfs needs nothing, hardware counters need CAP_PERFMON, scheduler events need privilege">
+      {
+        tiers.map((tier, i) => {
+          const y = i * rowHeight + 8;
+          const inset = i * 14;
+          const barWidth = width - inset - 20;
+          return (
+            <g>
+              <rect
+                x={20 + inset}
+                y={y}
+                width={barWidth}
+                height="44"
+                fill="var(--panel-raised)"
+                stroke={tier.colour}
+                stroke-width="1"
+              />
+              <rect x={20 + inset} y={y} width="4" height="44" fill={tier.colour} />
+              <text x={20 + inset + 16} y={y + 19} font-size="13" fill="var(--ink)">{tier.name}</text>
+              <text x={20 + inset + 16} y={y + 35} font-size="11.5" fill="var(--ink-dim)">
+                adds {tier.adds}
+              </text>
+              <text x={width - 24} y={y + 27} font-size="11" text-anchor="end" fill="var(--ink-faint)">
+                needs {tier.needs}
+              </text>
+            </g>
+          );
+        })
+      }
+    </svg>
+  </div>
+  <div class="chart-note">
+    <p>
+      A product that needs root is unshippable inside someone else's game engine, so tier 0 is the
+      floor and the other two are upgrades. Each sample carries the tier it came from, so a
+      consumer can never mistake a derived figure for a measured one.
+    </p>
+  </div>
+</figure>

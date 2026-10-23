@@ -237,6 +237,17 @@ tr.total td { border-top: 1px solid var(--line-strong); border-bottom: none; col
 .kv .v { font-family: 'IBM Plex Mono', monospace; font-size: 17px; margin-top: 5px; }
 .ok { color: #7fae72; }
 .bad { color: var(--sev-critical); }
+figure.chart { margin: 18px 0 0; border: 1px solid var(--line); border-radius: var(--radius);
+               background: var(--panel); overflow: hidden; }
+figure.chart figcaption { padding: 10px 14px; border-bottom: 1px solid var(--line);
+                          font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
+                          text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-faint); }
+figure.chart .plot { padding: 14px; overflow-x: auto; }
+figure.chart svg { display: block; max-width: 100%; height: auto; }
+figure.chart svg text { font-family: 'IBM Plex Mono', monospace; fill: var(--ink-faint); }
+figure.chart svg .grid { stroke: #262622; }
+figure.chart svg .label { fill: var(--ink); }
+.chart-note { padding: 0 14px 12px; color: var(--ink-dim); font-size: 12px; }
 footer { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--line);
          color: var(--ink-faint); font-size: 12px; }
 </style>\n</head>\n<body>\n<div class=\"wrap\">\n",
@@ -314,6 +325,19 @@ footer { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--line);
         );
     }
 
+    // Charts.
+    //
+    // The report is one file that opens offline with nothing to fetch, so the
+    // charts are inline SVG rather than a canvas library: a charting
+    // dependency would be a network reference in a document somebody is about
+    // to attach to a bug report.
+    if analysis.has_attribution && analysis.total_wall_ns > 0 {
+        html.push_str("<h2>Readout</h2>\n");
+        html.push_str(&run_split_chart(analysis));
+        html.push_str(&preempt_histogram(analysis));
+        html.push_str(&thread_stack_chart(analysis));
+    }
+
     // Per-thread table
     html.push_str("<h2>Threads</h2>\n<table>\n<thead><tr><th>Thread</th><th>On-CPU</th><th>Preempted</th><th>Blocked</th><th>Preempt%</th><th>Switches</th><th>Core cycles</th><th>Split</th></tr></thead>\n<tbody>\n");
     for thread in &analysis.threads {
@@ -389,7 +413,9 @@ footer { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--line);
     // Per-phase breakdown
     let has_phases = analysis.threads.iter().any(|t| !t.phases.is_empty());
     if has_phases {
-        html.push_str("<h2>Phases</h2>\n<table>\n<thead><tr><th>Thread</th><th>Phase</th><th>On-CPU</th><th>Preempted</th><th>Blocked</th><th>Samples</th></tr></thead>\n<tbody>\n");
+        html.push_str("<h2>Phases</h2>\n");
+        html.push_str(&phase_stack_chart(analysis));
+        html.push_str("<table>\n<thead><tr><th>Thread</th><th>Phase</th><th>On-CPU</th><th>Preempted</th><th>Blocked</th><th>Samples</th></tr></thead>\n<tbody>\n");
         for thread in &analysis.threads {
             for (name, phase) in &thread.phases {
                 let _ = writeln!(
@@ -434,6 +460,302 @@ fn split_bar(thread: &ThreadAttribution) -> String {
 /// analyzer exists to prevent. An empty bar says the split is unavailable.
 fn split_bar_without_attribution() -> String {
     "<span class=\"stack\" title=\"no preemption/blocking split in the source\"></span>".to_string()
+}
+
+/// The three colours the charts and the legend share.
+const C_ONCPU: &str = "var(--accent)";
+const C_PREEMPT: &str = "var(--sev-critical)";
+const C_BLOCKED: &str = "var(--sev-info)";
+const C_TRACK: &str = "#22221f";
+/// How many threads a per-thread chart draws before it stops.
+///
+/// A trace can carry thousands of threads and a chart of thousands of rows is
+/// not a chart. The rows are sorted by preempted share, so what is dropped is
+/// the quietest end, and the caption says how many were dropped.
+const CHART_THREAD_CAP: usize = 60;
+
+/// One stacked bar for the whole run.
+fn run_split_chart(analysis: &Analysis) -> String {
+    let wall = analysis.total_wall_ns.max(1);
+    let on = analysis.total_on_cpu_ns as f64 / wall as f64 * 100.0;
+    let pre = analysis.total_preempted_ns as f64 / wall as f64 * 100.0;
+    let blocked = (100.0 - on - pre).max(0.0);
+    let width = 1120.0;
+    let bar = 44.0;
+    let x_pre = on / 100.0 * width;
+    let x_blocked = ((on + pre) / 100.0 * width).min(width);
+    format!(
+        "<figure class=\"chart\">\
+         <figcaption>The whole run, one bar · {threads} threads · {wall_seconds:.2} s of wall time</figcaption>\
+         <div class=\"plot\"><svg viewBox=\"0 0 {width} {height}\" role=\"img\" \
+         aria-label=\"on-CPU {on:.1} per cent, preempted {pre:.1} per cent, blocked {blocked:.1} per cent\">\
+         <rect x=\"0\" y=\"0\" width=\"{width}\" height=\"{bar}\" fill=\"{C_TRACK}\"/>\
+         <rect x=\"0\" y=\"0\" width=\"{w_on}\" height=\"{bar}\" fill=\"{C_ONCPU}\"/>\
+         <rect x=\"{x_pre}\" y=\"0\" width=\"{w_pre}\" height=\"{bar}\" fill=\"{C_PREEMPT}\"/>\
+         <rect x=\"{x_blocked}\" y=\"0\" width=\"{w_blocked}\" height=\"{bar}\" fill=\"{C_BLOCKED}\"/>\
+         <text x=\"8\" y=\"{label_y}\" font-size=\"12\" class=\"label\">on-CPU {on:.1}%</text>\
+         <text x=\"{x_pre2}\" y=\"{label_y}\" font-size=\"12\" class=\"label\">preempted {pre:.1}%</text>\
+         <text x=\"{x_blocked2}\" y=\"{label_y}\" font-size=\"12\" class=\"label\" text-anchor=\"end\">blocked {blocked:.1}%</text>\
+         </svg></div>\
+         <div class=\"chart-note\">The share of the run's wall time each bucket owns. A bar this full of \
+         red is a thread-count problem, not a code problem.</div></figure>",
+        threads = analysis.threads.len(),
+        wall_seconds = analysis.total_wall_ns as f64 / 1e9,
+        height = bar + 34.0,
+        w_on = x_pre,
+        w_pre = (x_blocked - x_pre).max(0.0),
+        w_blocked = (width - x_blocked).max(0.0),
+        x_pre2 = (x_pre + 8.0).min(width - 120.0),
+        x_blocked2 = width - 8.0,
+        label_y = bar + 20.0,
+    )
+}
+
+/// Every thread as one 100 %-wide stacked row, sorted by preempted share.
+fn thread_stack_chart(analysis: &Analysis) -> String {
+    let wall = analysis.total_wall_ns.max(1);
+    let _ = wall;
+    let mut order: Vec<&ThreadAttribution> = analysis.threads.iter().collect();
+    order.sort_by(|a, b| {
+        b.preempted_fraction()
+            .partial_cmp(&a.preempted_fraction())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let total = order.len();
+    order.truncate(CHART_THREAD_CAP);
+
+    let width = 1120.0;
+    let label = 78.0;
+    let right = 66.0;
+    let usable = width - label - right;
+    let row = 9.0;
+    let gap = 2.0;
+    let top = 22.0;
+    let height = top + order.len() as f64 * (row + gap) + 12.0;
+
+    let mut svg = format!(
+        "<figure class=\"chart\"><figcaption>Every thread, sorted by the share it lost to preemption · \
+         {drawn} of {total} drawn</figcaption><div class=\"plot\"><svg viewBox=\"0 0 {width} {height}\" \
+         role=\"img\" aria-label=\"stacked bars for {drawn} threads\">",
+        drawn = order.len()
+    );
+    for (i, thread) in order.iter().enumerate() {
+        let y = top + i as f64 * (row + gap);
+        let own = thread.wall_ns.max(1);
+        let on = thread.on_cpu_ns as f64 / own as f64 * usable;
+        let pre = thread.preempted_ns as f64 / own as f64 * usable;
+        let blocked = (usable - on - pre).max(0.0);
+        let _ = write!(
+            svg,
+            "<rect x=\"{label}\" y=\"{y}\" width=\"{usable}\" height=\"{row}\" fill=\"{C_TRACK}\"/>\
+             <rect x=\"{label}\" y=\"{y}\" width=\"{on}\" height=\"{row}\" fill=\"{C_ONCPU}\"/>\
+             <rect x=\"{x_pre}\" y=\"{y}\" width=\"{pre}\" height=\"{row}\" fill=\"{C_PREEMPT}\"/>\
+             <rect x=\"{x_blocked}\" y=\"{y}\" width=\"{blocked}\" height=\"{row}\" fill=\"{C_BLOCKED}\"/>\
+             <text x=\"{tid_x}\" y=\"{baseline}\" font-size=\"8.5\" text-anchor=\"end\">{tid}</text>\
+             <text x=\"{share_x}\" y=\"{baseline}\" font-size=\"8.5\">{share:.1}%</text>",
+            y = y,
+            row = row,
+            label = label,
+            usable = usable,
+            on = on,
+            pre = pre,
+            blocked = blocked,
+            x_pre = label + on,
+            x_blocked = label + on + pre,
+            tid_x = label - 8.0,
+            baseline = y + row - 0.5,
+            share_x = label + usable + 8.0,
+            tid = thread.tid,
+            share = thread.preempted_fraction() * 100.0,
+        );
+    }
+    let dropped = total - order.len();
+    let note = if dropped == 0 {
+        String::new()
+    } else {
+        format!(" {dropped} quieter thread(s) are in the table below but not on this chart.")
+    };
+    let _ = write!(
+        svg,
+        "<line class=\"grid\" x1=\"{label}\" y1=\"8\" x2=\"{end}\" y2=\"8\"/>\
+         <text x=\"{end}\" y=\"4\" font-size=\"9\" text-anchor=\"end\">median {median:.1}% preempted</text>\
+         </svg></div><div class=\"chart-note\">The flatness is the finding: when every thread loses \
+         about the same share, the run is over-subscribed and no thread is the culprit.{note}</div></figure>",
+        label = label,
+        end = label + usable,
+        median = median_preempted_share(analysis) * 100.0,
+        note = note,
+    );
+    svg
+}
+
+/// The distribution of preempted share across the threads.
+fn preempt_histogram(analysis: &Analysis) -> String {
+    let shares: Vec<f64> = analysis
+        .threads
+        .iter()
+        .map(|t| t.preempted_fraction() * 100.0)
+        .collect();
+    if shares.len() < 2 {
+        return String::new();
+    }
+    let min = shares.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max = shares.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let bin_width = 0.5;
+    let lo = (min / bin_width).floor() * bin_width;
+    let bins = (((max - lo) / bin_width).ceil() as usize).max(1);
+    let mut counts = vec![0usize; bins];
+    for share in &shares {
+        let index =
+            (((share - lo) / bin_width).floor() as isize).clamp(0, bins as isize - 1) as usize;
+        counts[index] += 1;
+    }
+    let peak = counts.iter().copied().max().unwrap_or(1).max(1);
+
+    let width = 1120.0;
+    let left = 40.0;
+    let plot_h = 130.0;
+    let top = 16.0;
+    let usable = width - left - 16.0;
+    let slot = usable / bins as f64;
+    let bar_w = slot * 0.72;
+    let bottom = top + plot_h;
+
+    let mut svg = format!(
+        "<figure class=\"chart\"><figcaption>How wide the preemption band is across {threads} threads · \
+         {bin_width} point bins</figcaption><div class=\"plot\"><svg viewBox=\"0 0 {width} {height}\" \
+         role=\"img\" aria-label=\"histogram of preempted share\">\
+         <line class=\"grid\" x1=\"{left}\" y1=\"{bottom}\" x2=\"{end}\" y2=\"{bottom}\"/>",
+        threads = shares.len(),
+        height = bottom + 30.0,
+        left = left,
+        bottom = bottom,
+        end = left + usable,
+    );
+    for (i, count) in counts.iter().enumerate() {
+        let x = left + i as f64 * slot + (slot - bar_w) / 2.0;
+        let h = *count as f64 / peak as f64 * plot_h;
+        let y = bottom - h;
+        let _ = write!(
+            svg,
+            "<rect x=\"{x}\" y=\"{y}\" width=\"{bar_w}\" height=\"{h}\" fill=\"{C_PREEMPT}\" opacity=\"0.85\"/>\
+             <text x=\"{cx}\" y=\"{top_of_bar}\" font-size=\"9\" text-anchor=\"middle\">{count}</text>\
+             <text x=\"{cx}\" y=\"{label_y}\" font-size=\"9\" text-anchor=\"middle\">{from:.1}</text>",
+            x = x,
+            y = y,
+            h = h,
+            bar_w = bar_w,
+            cx = x + bar_w / 2.0,
+            top_of_bar = (y - 3.0).max(10.0),
+            label_y = bottom + 14.0,
+            count = count,
+            from = lo + i as f64 * bin_width,
+        );
+    }
+    let spread = max - min;
+    let _ = write!(
+        svg,
+        "<text x=\"{left}\" y=\"{foot}\" font-size=\"10\">preempted share of wall time, per cent</text>\
+         <text x=\"{end}\" y=\"{foot}\" font-size=\"10\" text-anchor=\"end\">spread {spread:.1} points</text>\
+         </svg></div><div class=\"chart-note\">A narrow band across every thread is the signature of a \
+         queue rather than of a bug: the threads are interchangeable and the scheduler treats them that \
+         way.</div></figure>",
+        left = left,
+        end = left + usable,
+        foot = bottom + 26.0,
+        spread = spread,
+    );
+    svg
+}
+
+/// One stacked bar per phase, summed across the threads that used it.
+fn phase_stack_chart(analysis: &Analysis) -> String {
+    let mut totals: std::collections::BTreeMap<&str, (u64, u64, u64)> =
+        std::collections::BTreeMap::new();
+    for thread in &analysis.threads {
+        for (name, phase) in &thread.phases {
+            let entry = totals.entry(name.as_str()).or_insert((0, 0, 0));
+            entry.0 += phase.on_cpu_ns;
+            entry.1 += phase.preempted_ns;
+            entry.2 += phase.blocked_ns;
+        }
+    }
+    if totals.is_empty() {
+        return String::new();
+    }
+    let rows: Vec<(&str, u64, u64, u64)> = totals
+        .into_iter()
+        .map(|(name, (on, pre, blocked))| (name, on, pre, blocked))
+        .collect();
+    let width = 1120.0;
+    let label = 170.0;
+    let right = 70.0;
+    let usable = width - label - right;
+    let row = 22.0;
+    let gap = 8.0;
+    let top = 10.0;
+    let height = top + rows.len() as f64 * (row + gap);
+
+    let mut svg = format!(
+        "<figure class=\"chart\"><figcaption>Where each phase's wall time went · {} phase(s), \
+         summed across threads</figcaption><div class=\"plot\"><svg viewBox=\"0 0 {width} {height}\" \
+         role=\"img\" aria-label=\"stacked bars per phase\">",
+        rows.len()
+    );
+    for (i, (name, on, pre, blocked)) in rows.iter().enumerate() {
+        let y = top + i as f64 * (row + gap);
+        let total = (on + pre + blocked).max(1);
+        let w_on = *on as f64 / total as f64 * usable;
+        let w_pre = *pre as f64 / total as f64 * usable;
+        let w_blocked = usable - w_on - w_pre;
+        let _ = write!(
+            svg,
+            "<text x=\"0\" y=\"{baseline}\" font-size=\"10.5\" class=\"label\">{name}</text>\
+             <rect x=\"{label}\" y=\"{y}\" width=\"{usable}\" height=\"{row}\" fill=\"{C_TRACK}\"/>\
+             <rect x=\"{label}\" y=\"{y}\" width=\"{w_on}\" height=\"{row}\" fill=\"{C_ONCPU}\"/>\
+             <rect x=\"{x_pre}\" y=\"{y}\" width=\"{w_pre}\" height=\"{row}\" fill=\"{C_PREEMPT}\"/>\
+             <rect x=\"{x_blocked}\" y=\"{y}\" width=\"{w_blocked}\" height=\"{row}\" fill=\"{C_BLOCKED}\"/>\
+             <text x=\"{share_x}\" y=\"{baseline}\" font-size=\"10\">{share:.0}% preempted</text>",
+            baseline = y + row - 7.0,
+            name = escape_html(name),
+            label = label,
+            y = y,
+            row = row,
+            usable = usable,
+            w_on = w_on,
+            w_pre = w_pre,
+            w_blocked = w_blocked,
+            x_pre = label + w_on,
+            x_blocked = label + w_on + w_pre,
+            share_x = label + usable + 8.0,
+            share = if total == 0 {
+                0.0
+            } else {
+                *pre as f64 / total as f64 * 100.0
+            },
+        );
+    }
+    svg.push_str("</svg></div><div class=\"chart-note\">A phase that is mostly red is the scheduler's; a phase that is mostly blue is waiting. They are fixed in different places.</div></figure>");
+    svg
+}
+
+/// The median preempted share across the analysed threads.
+fn median_preempted_share(analysis: &Analysis) -> f64 {
+    if analysis.threads.is_empty() {
+        return 0.0;
+    }
+    let mut shares: Vec<f64> = analysis
+        .threads
+        .iter()
+        .map(|t| t.preempted_fraction())
+        .collect();
+    shares.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mid = shares.len() / 2;
+    if shares.len() % 2 == 1 {
+        shares[mid]
+    } else {
+        (shares[mid - 1] + shares[mid]) / 2.0
+    }
 }
 
 /// Escape text for inclusion in HTML.

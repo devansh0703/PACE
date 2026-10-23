@@ -1,0 +1,67 @@
+---
+// The decomposition of one real thread, annotated with what each bucket
+// implies. This is the product's whole argument in one figure: the same
+// wall time, three different owners, two opposite fixes.
+import { run, human, pct, share } from '../../data/measurements';
+
+const t = run.worst;
+const onCpu = share(t.onCpuNs, t.wallNs);
+const preempted = share(t.preemptedNs, t.wallNs);
+const blocked = share(t.blockedNs, t.wallNs);
+
+const width = 900;
+const barHeight = 44;
+const left = 8;
+const usable = width - left * 2;
+
+const segments = [
+  { key: 'on-CPU', width: (onCpu / 100) * usable, cls: 'oncpu', colour: 'var(--accent)' },
+  { key: 'preempted', width: (preempted / 100) * usable, cls: 'preempt', colour: 'var(--sev-critical)' },
+  { key: 'blocked', width: (blocked / 100) * usable, cls: 'blocked', colour: 'var(--sev-info)' },
+];
+let cursor = left;
+const placed = segments.map((s) => {
+  const x = cursor;
+  cursor += s.width;
+  return { ...s, x };
+});
+---
+
+<figure class="chart">
+  <figcaption>
+    <span>One thread, one window, three owners</span>
+    <span class="src">pace-analyzer/results/real-trace-report.txt, thread {t.tid}</span>
+  </figcaption>
+  <div class="plot">
+    <svg viewBox={`0 0 ${width} 210`} role="img" aria-label={`Thread ${t.tid}: on-CPU ${human(t.onCpuNs)}, preempted ${human(t.preemptedNs)}, blocked ${human(t.blockedNs)}, of a wall time of ${human(t.wallNs)}`}>
+      <text x={left} y="16" font-size="12">wall time {human(t.wallNs)}</text>
+
+      <g transform="translate(0, 28)">
+        {
+          placed.map((s) => (
+            <rect x={s.x} y="0" width={s.width} height={barHeight} fill={s.colour} stroke="var(--line-strong)" stroke-width="0.5" />
+          ))
+        }
+      </g>
+
+      <g font-size="12">
+        <text x={placed[0].x + 8} y={28 + barHeight + 18}>on-CPU {human(t.onCpuNs)} · {pct(onCpu)}</text>
+        <text x={placed[1].x + 8} y={28 + barHeight + 36}>preempted {human(t.preemptedNs)} · {pct(preempted)}</text>
+        <text x={placed[2].x - 4} y={28 + barHeight + 18} text-anchor="end">blocked {human(t.blockedNs)} · {pct(blocked)}</text>
+      </g>
+
+      <g font-size="11.5" fill="var(--ink-dim)">
+        <text x={left} y="176">ran on a core</text>
+        <text x={Math.round(left + usable * 0.55)} y="176">runnable, the scheduler had other work — fix the thread count, the priority, the affinity, or the machine</text>
+        <text x={width - left} y="196" text-anchor="end">neither running nor runnable — sleeping, on a lock, on I/O — fix the code</text>
+      </g>
+    </svg>
+  </div>
+  <div class="chart-note">
+    <p>
+      Both failure modes produce the same symptom: a slow thread. Only one of them responds to
+      editing code. A counter that reports the {human(t.onCpuNs)} and stops has left
+      {' '}{human(t.wallNs - t.onCpuNs)} unattributed, which is where this thread's answer is.
+    </p>
+  </div>
+</figure>

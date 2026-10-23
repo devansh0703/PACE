@@ -1,0 +1,224 @@
+---
+// The full accuracy record. Every figure is rendered from
+// pace-sdk/results/accuracy.json at build time; websites/scripts/check_site_accuracy.py
+// re-checks the built page against the artifact in CI, so a hand-typed number
+// cannot survive here.
+import Base from '../../layouts/Base.astro';
+import { site, href } from '../../data/site';
+import { measurements, decomposition, environment, fine } from '../../data/measurements';
+import AccuracyLog from '../../components/charts/AccuracyLog.astro';
+import PairedRuns from '../../components/charts/PairedRuns.astro';
+import DecompositionFigure from '../../components/charts/DecompositionFigure.astro';
+
+// "on-CPU time vs /proc/<tid>/schedstat (kernel cfs accounting)" -> the source.
+function against(name: string): string {
+  const cut = name.indexOf(' vs ');
+  return cut === -1 ? name : name.slice(cut + 4);
+}
+
+const cfs = measurements.find((m) => m.short === 'on-CPU vs schedstat')!;
+const perfRun = measurements.find((m) => m.short === 'on-CPU vs perf run time')!;
+const perfWait = measurements.find((m) => m.short === 'off-CPU vs perf wait time')!;
+const perfDelay = measurements.find((m) => m.short === 'preempted vs perf sch delay')!;
+---
+
+<Base
+  title="Accuracy — PACE"
+  description="Every cross-check PACE's harness makes, the source each one is compared against, the gate it must pass, and the method behind the numbers."
+>
+  <div class="wrap">
+    <div class="breadcrumb"><a href={href()}>PACE</a> / <a href={href('research/')}>research</a> / accuracy</div>
+    <section class="hero">
+      <div class="section-label">Research · accuracy</div>
+      <h1>What the harness measures, and what it is gated on</h1>
+      <p class="lede">
+        The claim is that PACE's split of a thread's wall time is real rather than modelled. The way
+        to test that is to measure the same window a second time, from a source that does not come
+        from PACE, and compare. This page is the result of doing that, unedited: the figures that are
+        strong, the one that is looser, and the reason it is looser.
+      </p>
+      <p class="lede">
+        Every number below is rendered from
+        {' '}<a href={`${site.repo}/blob/main/pace-sdk/results/accuracy.json`}>the committed
+        artifact</a> when this site is built. None of it is typed into the page.
+      </p>
+    </section>
+
+    <section>
+      <div class="section-label">The table</div>
+      <h2>Every cross-check, with the gate it passes or misses</h2>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Measured</th>
+              <th>Compared against</th>
+              <th>n</th>
+              <th>Median</th>
+              <th>p95</th>
+              <th>Gate</th>
+              <th>Verdict</th>
+            </tr>
+          </thead>
+          <tbody>
+            {
+              measurements.map((m) => (
+                <tr>
+                  <td>{m.short}</td>
+                  <td class="dim" style="white-space:normal">{against(m.name)}</td>
+                  <td class="dim">{m.n}</td>
+                  <td>{fine(m.median)}</td>
+                  <td>{fine(m.p95)}</td>
+                  <td class="dim">{fine(m.threshold)}</td>
+                  <td class={m.skipped ? 'dim' : m.passed ? 'ok' : 'bad'}>
+                    {m.skipped ? 'reported' : m.passed ? 'pass' : 'fail'}
+                  </td>
+                </tr>
+              ))
+            }
+            <tr>
+              <td>decomposition balance</td>
+              <td class="dim" style="white-space:normal">every recorded sample</td>
+              <td class="dim">{decomposition.samples.toLocaleString('en-US')}</td>
+              <td>0.0000 %</td>
+              <td>0.0000 %</td>
+              <td class="dim">0.0100 %</td>
+              <td class="ok">pass</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        The unit is relative error, as a percentage of the quantity being measured. "compared against"
+        is the second source: the kernel's own accounting, an independently read clock, or perf's
+        scheduling analysis.
+      </p>
+      <AccuracyLog />
+    </section>
+
+    <section>
+      <div class="section-label">Reading the numbers</div>
+      <h2>Median, p95 and gate are three different statements</h2>
+      <div class="grid-3">
+        <div class="panel">
+          <h3><i class="ph ph-target"></i> Median</h3>
+          <p>
+            What a typical run does. The headline agreement with the kernel's own accounting is
+            {' '}{fine(cfs.median)}, which is four orders of magnitude below the gate.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-chart-line-down"></i> p95</h3>
+          <p>
+            The tail. This is the column that tells you whether the good median is an average over a
+            bimodal distribution, and it is reported because a median alone can hide exactly that.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-door"></i> Gate</h3>
+          <p>
+            The threshold the build fails on. It is deliberately looser than the measured figure, so
+            that a regression shows up as a failure rather than as a quiet drift.
+          </p>
+        </div>
+      </div>
+      <div class="callout">
+        <div class="callout-title">Why the preempted row against perf is the loosest, and why that is not a defect in PACE</div>
+        <p>
+          The kernel's run-queue delay accumulates continuously, from the moment a thread becomes
+          runnable to the moment it runs. <span class="mono">perf</span> can only measure the
+          wakeup-to-running interval where it captured a <span class="mono">sched_wakeup</span>
+          tracepoint, so its figure is the same quantity under a different instrumentation with a
+          coverage gap. The two disagree at {fine(perfDelay.median)} median, and that number is
+          labelled <em>reported, not gated</em> in the artifact for exactly this reason. The tighter
+          cross-check on the same underlying phenomenon is the off-CPU row, where PACE and perf agree
+          to {fine(perfWait.median)}.
+        </p>
+      </div>
+      <div class="grid-2">
+        <div class="panel">
+          <h3><i class="ph ph-clock-afternoon"></i> On-CPU against perf's own run time</h3>
+          <p>
+            {fine(perfRun.median)} median, {fine(perfRun.p95)} at p95. This is the check that says
+            PACE's on-CPU figure is not an artefact of agreeing with one particular kernel interface.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-git-compare"></i> Off-CPU: preempted plus blocked</h3>
+          <p>
+            {fine(perfWait.median)} median. Off-CPU is the sum of the two buckets PACE splits apart,
+            so this is the check that the split sums to something perf can see independently.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">The invariant</div>
+      <h2>The arithmetic, checked on every sample rather than asserted</h2>
+      <DecompositionFigure />
+      <p>
+        A violation count of zero over
+        {' '}{decomposition.samples.toLocaleString('en-US')} samples is a stronger statement than a
+        small percentage, and it is the one this project would treat as a defect if it ever changed.
+      </p>
+    </section>
+
+    <section>
+      <div class="section-label">The distribution</div>
+      <h2>Every run, not just the summary statistic</h2>
+      <PairedRuns />
+      <p>
+        A median is a compression of thirty runs into one number. The figure above is the thirty
+        runs, so you can see the spread rather than trust the summary. The two series are the two
+        regimes the harness exercises: a window where the thread stays runnable, and a window where
+        it is off-CPU for almost all of it.
+      </p>
+    </section>
+
+    <section>
+      <div class="section-label">Method and reproducibility</div>
+      <h2>How the numbers were produced, and what would invalidate them</h2>
+      <div class="grid-2">
+        <div class="panel">
+          <h3><i class="ph ph-list-numbers"></i> The protocol</h3>
+          <ul>
+            <li>N &ge; 30 independent runs per configuration, median and p95 reported rather than means.</li>
+            <li>Core pinning through <span class="mono">taskset</span> so a migration cannot be mistaken for a preemption.</li>
+            <li>The governor and the turbo state recorded in the artifact, so a result taken at a different frequency is identifiable as such.</li>
+            <li>The rules from the <em>Rigorous Benchmarking in C++</em> paper applied to the harness itself, not only to the product.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-flask"></i> What would invalidate these figures</h3>
+          <ul>
+            <li>A different kernel scheduler. These are measurements of this kernel's accounting as much as of PACE, and a scheduler change moves both sides.</li>
+            <li>A container or VM where <span class="mono">/proc/&lt;tid&gt;/schedstat</span> is not the host's. The benchmark here ran outside one.</li>
+            <li>A machine whose timer resolution differs materially from {environment.clk_tck} Hz, which is what sets the floor on the tick-granularity comparison.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout">
+        <div class="callout-title">The environment these ran in</div>
+        <p>
+          {environment.cpu_model}, {environment.cpu_count} hardware threads,
+          {' '}<span class="mono">{environment.uname}</span>, governor
+          {' '}<span class="mono">{environment.governor}</span>,
+          {' '}<span class="mono">perf_event_paranoid={environment.kernel_perf_event_paranoid}</span>,
+          recorded {environment.timestamp_utc}. One machine is one machine; the harness is in the
+          repository so that a second machine is a command rather than an argument.
+        </p>
+      </div>
+      <div class="cta-row">
+        <a class="btn" href={href('research/')}>
+          <i class="ph ph-arrow-left"></i>
+          Back to the research index
+        </a>
+        <a class="btn" href={href('research/prior-art/')}>
+          <i class="ph ph-scales"></i>
+          Prior art
+        </a>
+      </div>
+    </section>
+  </div>
+</Base>

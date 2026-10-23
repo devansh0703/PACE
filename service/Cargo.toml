@@ -1,0 +1,28 @@
+[package]
+name = "pace-service"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "The hosted PACE analyzer: pace analyze behind an HTTP endpoint."
+license = "Apache-2.0"
+publish = false
+
+[[bin]]
+name = "pace-service"
+path = "src/main.rs"
+
+[dependencies]
+# The analyzer is the product. The service is a transport in front of it, and
+# it embeds the library rather than shelling out to the binary so that there is
+# one implementation of the attribution and not two.
+pace-analyzer = { path = "../pace-analyzer" }
+# The smallest maintained HTTP server that does the job. The host gives this
+# service a tenth of a core, so an async runtime with a thread pool per
+# connection would spend the budget on the runtime rather than the analysis.
+tiny_http = "0.12"
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true

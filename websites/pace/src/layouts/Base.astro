@@ -1,0 +1,130 @@
+---
+// The one layout every page uses: the theme bootstrap, the nav, the footer.
+//
+// Light is the default. The `is:inline` script runs before first paint, so a
+// reader who chose dark does not get a flash of light on every navigation;
+// Astro defers a bundled script, which is what causes that flash.
+import '@fontsource/ibm-plex-mono/400.css';
+import '@fontsource/ibm-plex-mono/500.css';
+import '@fontsource/ibm-plex-sans/400.css';
+import '@fontsource/ibm-plex-sans/500.css';
+import '@phosphor-icons/web/regular';
+import '../styles/wire-terminal.css';
+import { site, nav, href, isCurrent } from '../data/site';
+
+type Props = {
+  title: string;
+  description: string;
+  /** Rendered in <head> after the standard tags, e.g. JSON-LD. */
+  structured?: Record<string, unknown>;
+};
+
+const { title, description, structured } = Astro.props;
+const path = Astro.url.pathname;
+const canonical = new URL(path, site.url).toString();
+---
+
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <meta name="color-scheme" content="light dark" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23f3f1ea'/><path d='M6 22 L12 10 L18 22 L24 10' stroke='%239c5c14' stroke-width='2.5' fill='none'/></svg>"
+    />
+    <script is:inline>
+      // The stored choice wins; the OS preference is the fallback; light is
+      // the default when neither says anything.
+      (function () {
+        var stored = null;
+        try {
+          stored = localStorage.getItem('pace-theme');
+        } catch (e) {
+          stored = null;
+        }
+        var theme =
+          stored === 'dark' || stored === 'light'
+            ? stored
+            : window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light';
+        document.documentElement.setAttribute('data-theme', theme);
+      })();
+    </script>
+    {structured && <script type="application/ld+json" set:html={JSON.stringify(structured)} />}
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <nav>
+      <div class="wrap">
+        <a class="brand" href={href()}>
+          <i class="ph ph-waveform"></i>
+          PACE
+        </a>
+        <div class="links">
+          {
+            nav.map((item) => (
+              <a href={href(item.href)} aria-current={isCurrent(path, item.href) ? 'page' : undefined}>
+                {item.label}
+              </a>
+            ))
+          }
+          <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch theme">
+            <i class="ph ph-moon"></i>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <main id="main">
+      <slot />
+    </main>
+
+    <div class="wrap">
+      <footer class="footer">
+        <span>PACE — preemption-aware time attribution</span>
+        <span class="footer-cols">
+          <a href={href('product/')}>Product</a>
+          <a href={href('service/')}>Service</a>
+          <a href={href('install/')}>Install</a>
+          <a href={href('docs/')}>Docs</a>
+          <a href={href('research/')}>Research</a>
+          <a href={href('license/')}>Licence</a>
+          <a href={site.repo}>Source</a>
+          <a href={`mailto:${site.contact}`}>{site.contact}</a>
+        </span>
+      </footer>
+    </div>
+
+    <script>
+      const button = document.getElementById('theme-toggle');
+      const icon = button?.querySelector('i');
+      function paint() {
+        const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+        if (icon) icon.className = dark ? 'ph ph-sun' : 'ph ph-moon';
+        button?.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+      }
+      button?.addEventListener('click', () => {
+        const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+        document.documentElement.setAttribute('data-theme', dark ? 'light' : 'dark');
+        try {
+          localStorage.setItem('pace-theme', dark ? 'light' : 'dark');
+        } catch (e) {
+          /* a reader with storage disabled keeps the session's theme */
+        }
+        paint();
+      });
+      paint();
+    </script>
+  </body>
+</html>

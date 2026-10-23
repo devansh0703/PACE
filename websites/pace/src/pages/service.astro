@@ -1,0 +1,262 @@
+---
+import Base from '../layouts/Base.astro';
+import { site, href } from '../data/site';
+import FormatFlow from '../components/charts/FormatFlow.astro';
+import DecompositionFigure from '../components/charts/DecompositionFigure.astro';
+import GapDiagram from '../components/charts/GapDiagram.astro';
+
+const endpoints = [
+  ['GET', '/health', 'liveness, the analyzer version, and the sample limit'],
+  ['GET', '/', 'the same page rendered by the service itself, with a form'],
+  ['POST', '/analyze', 'a trace in the body, a report out'],
+];
+
+const limits = [
+  ['Request body', '8 MiB'],
+  ['Samples per request', '2,000,000'],
+  ['Wall-clock budget per request', '20 s'],
+  ['Concurrent requests', '1 — the free instance has a tenth of a core'],
+  ['Retention', 'none: the trace is held in memory for the request and then dropped'],
+];
+---
+
+<Base
+  title="The hosted analyzer — PACE"
+  description="Send a trace to the PACE service over HTTP and get the attribution report back. The same open-source analyzer, running on a machine you did not have to build a Rust toolchain for."
+>
+  <div class="wrap">
+    <section class="hero">
+      <div class="section-label">The hosted service · free, and the code is the same code</div>
+      <h1>Post a trace, get the attribution back</h1>
+      <p class="lede">
+        The analyzer is a Rust binary that reads a file. To try it you would have to install a
+        toolchain, clone the repository and build it. This is that same binary behind an HTTP
+        endpoint, so you can find out what PACE says about a run before you decide to embed anything.
+      </p>
+      <p class="lede">
+        It is not a different product and it is not a hosted-only feature: it is
+        {' '}<span class="mono">pace analyze</span> with the report returned over the wire, running
+        from the same source you can read and deploy yourself.
+      </p>
+      <div class="cta-row">
+        <a class="btn primary" href="#try">
+          <i class="ph ph-arrow-down"></i>
+          How to call it
+        </a>
+        <a class="btn" href={site.repo}>
+          <i class="ph ph-github-logo"></i>
+          Read the source it runs
+        </a>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">Live status</div>
+      <h2>Is it awake?</h2>
+      <p>
+        This is a free instance on a shared host, which means two things you should know before you
+        rely on it: it sleeps after fifteen minutes without a request, and the first request after
+        that takes about a minute to answer. An uptime monitor pings it every five minutes to keep
+        that from happening, and the state below is read from the service itself rather than from
+        this page's build.
+      </p>
+      <div class="readout">
+        <div class="readout-head">
+          <span class="mono">{site.service}/health</span>
+          <span>fetched by your browser, not by the site build</span>
+        </div>
+        <div class="readout-body">
+          <div class="status-list" id="service-status">
+            <dt>state</dt>
+            <dd id="st-state">checking…</dd>
+            <dt>analyzer</dt>
+            <dd id="st-version">—</dd>
+            <dt>uptime</dt>
+            <dd id="st-uptime">—</dd>
+            <dt>sample limit</dt>
+            <dd id="st-limit">—</dd>
+          </div>
+        </div>
+      </div>
+      <p style="margin-top:16px">
+        If it says unreachable, the instance is probably spinning up — wait a minute and reload. If it
+        stays unreachable, <a href={site.issues}>tell me</a> rather than assuming PACE does not work;
+        the failure here would be mine, not the method's.
+      </p>
+    </section>
+
+    <section id="try">
+      <div class="section-label">How to call it</div>
+      <h2>One POST, one report</h2>
+      <div class="grid-2">
+        <div class="panel terminal-block">
+          <h3><i class="ph ph-terminal-window"></i> Terminal report</h3>
+          <pre><code>{`curl -sS ${site.service}/analyze \\
+  --data-binary @trace.jsonl`}</code></pre>
+          <p>
+            The body is the trace. The response is the same text the command line prints: a summary
+            line, a row per thread, and the ranked findings.
+          </p>
+        </div>
+        <div class="panel terminal-block">
+          <h3><i class="ph ph-file-html"></i> Self-contained HTML</h3>
+          <pre><code>{`curl -sS -o report.html \\
+  "${site.service}/analyze?format=html" \\
+  --data-binary @trace.jsonl`}</code></pre>
+          <p>
+            The HTML report is one file with nothing to fetch — the same artifact
+            <span class="mono">--output report.html</span> produces locally.
+          </p>
+        </div>
+        <div class="panel terminal-block">
+          <h3><i class="ph ph-brackets-curly"></i> JSON, for a script</h3>
+          <pre><code>{`curl -sS "${site.service}/analyze?format=json" \\
+  --data-binary @trace.jsonl | jq .summary`}</code></pre>
+          <p>
+            The same numbers as the report, as JSON, so a CI job can assert on them without parsing
+            text.
+          </p>
+        </div>
+        <div class="panel terminal-block">
+          <h3><i class="ph ph-check-circle"></i> Verify only</h3>
+          <pre><code>{`curl -sS -o /dev/null -w '%{http_code}\\n' \\
+  "${site.service}/analyze?verify=1" \\
+  --data-binary @trace.jsonl`}</code></pre>
+          <p>
+            200 when the decomposition holds on every sample, 422 when it does not. That is
+            <span class="mono">pace verify</span> as a status code.
+          </p>
+        </div>
+      </div>
+      <FormatFlow />
+    </section>
+
+    <section>
+      <div class="section-label">Endpoints and limits</div>
+      <h2>Stated exactly, because guessing wastes your time</h2>
+      <div class="grid-2">
+        <div class="panel">
+          <h3><i class="ph ph-signpost"></i> Endpoints</h3>
+          <div class="table-scroll">
+            <table>
+              <tbody>
+                {
+                  endpoints.map(([method, path, what]) => (
+                    <tr>
+                      <td><span class="mono">{method}</span></td>
+                      <td><span class="mono">{path}</span></td>
+                      <td class="dim" style="white-space:normal">{what}</td>
+                    </tr>
+                  ))
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-gauge"></i> Limits</h3>
+          <div class="table-scroll">
+            <table>
+              <tbody>
+                {
+                  limits.map(([what, value]) => (
+                    <tr>
+                      <td>{what}</td>
+                      <td class="dim" style="white-space:normal">{value}</td>
+                    </tr>
+                  ))
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="callout">
+        <div class="callout-title">What happens to your trace</div>
+        <p>
+          Nothing is stored. The trace is read into memory for the duration of one request, the
+          report is written to the response, and the buffer goes. There is no database behind this
+          service and no persistent disk on the host — the free instance does not have one — so there
+          is nowhere for a trace to end up even if something tried. If your trace is confidential,
+          run the analyzer yourself; the
+          {' '}<a href={href('install/')}>install page</a> takes one command.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">What it gives you back</div>
+      <h2>The same decomposition, over the wire</h2>
+      <GapDiagram />
+      <DecompositionFigure />
+    </section>
+
+    <section>
+      <div class="section-label">Run it yourself</div>
+      <h2>The service is not the product; the analyzer is</h2>
+      <p>
+        The hosted instance exists so you do not need a toolchain to see the output. Everything it
+        does, a checkout does: the container definition and the service's own
+        <span class="mono">render.yaml</span> are in the repository, so you can deploy the identical
+        thing on your own host, or point the site at your own URL.
+      </p>
+      <div class="grid-2">
+        <div class="panel terminal-block">
+          <h3><i class="ph ph-cube"></i> Container</h3>
+          <pre><code>{`git clone ${site.repo}
+cd PACE/service
+docker build -t pace-service .
+docker run -p 8080:8080 pace-service
+curl localhost:8080/health`}</code></pre>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-warning-circle"></i> Two honest caveats</h3>
+          <p>
+            The free instance has a tenth of a core and half a gigabyte of memory, so a very large
+            trace will time out here and would not on your machine. And only one request is served at
+            a time, so a queue behind a large trace is the expected behaviour rather than a bug.
+          </p>
+          <p>
+            Neither of those is a property of the method. If either matters to you, that is the point
+            at which running it locally is the right answer.
+          </p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script is:inline define:vars={{ serviceUrl: site.service }}>
+    // The service is on another origin, so this is a real CORS fetch. The
+    // service sends Access-Control-Allow-Origin for GET /health, and the page
+    // reports honestly when it cannot reach it.
+    const set = (id, text) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    };
+    (async () => {
+      const started = performance.now();
+      try {
+        const response = await fetch(`${serviceUrl}/health`, { cache: 'no-store' });
+        const ms = Math.round(performance.now() - started);
+        if (!response.ok) {
+          set('st-state', `answered ${response.status} in ${ms} ms`);
+          return;
+        }
+        const body = await response.json();
+        set('st-state', `awake — answered in ${ms} ms`);
+        set('st-version', body.analyzer ?? '—');
+        set('st-limit', body.sample_limit ? body.sample_limit.toLocaleString('en-US') : '—');
+        const up = body.uptime_s;
+        set(
+          'st-uptime',
+          typeof up === 'number'
+            ? `${Math.floor(up / 60)} min ${Math.round(up % 60)} s (this instance, since it last started)`
+            : '—'
+        );
+      } catch (error) {
+        set('st-state', 'unreachable from your browser');
+        set('st-version', '—');
+      }
+    })();
+  </script>
+</Base>

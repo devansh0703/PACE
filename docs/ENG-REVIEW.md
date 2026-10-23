@@ -1,5 +1,14 @@
 # Engineering review — PACE
 
+
+> **Historical record.** This review describes the product as it was when it was written,
+> and it is dated so a reader can tell. Two things changed after it: the brief's two-product
+> framing was a misreading, so the library, the analyzer and the hosted service are one
+> product with one site; and the project stopped being a licensing business, so the
+> commercial-licence reasoning in some of these reviews no longer reflects how the product is
+> published. Where the two disagree, [README.md](../README.md) and [PLAN.md](../PLAN.md) are
+> current and this file is not.
+
 Written 2026-10-21 against the implementation as it stood that day. The
 findings it describes are tracked in the status table at the end of the
 CEO review, and the review itself is dated the same way.

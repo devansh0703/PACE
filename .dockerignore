@@ -1,0 +1,32 @@
+# The Docker build context is the repository root, because the service depends
+# on the analyzer crate by path. Without this file the context would be several
+# gigabytes of build directories and would take longer to upload than to
+# compile.
+#
+# Only what the build needs stays: pace-analyzer/ (the crate it links) and
+# service/ (the crate being built).
+
+.git
+.github
+
+# Secrets never belong in a build context, even when nothing copies them.
+.env
+.env.*
+
+# Build outputs of every kind.
+**/target
+**/node_modules
+**/dist
+**/.astro
+pace-sdk/build*/
+pace-analyzer/target
+
+# Nothing else in the repository is part of the image: the site, the SDK, the
+# ports and the documents all ship elsewhere.
+pace-sdk/
+websites/
+ports/
+scripts/
+docs/
+*.md
+*.jsonl

@@ -1,5 +1,14 @@
 # PACE — Competitive and Prior-Art Research
 
+
+> **Historical record.** This review describes the product as it was when it was written,
+> and it is dated so a reader can tell. Two things changed after it: the brief's two-product
+> framing was a misreading, so the library, the analyzer and the hosted service are one
+> product with one site; and the project stopped being a licensing business, so the
+> commercial-licence reasoning in some of these reviews no longer reflects how the product is
+> published. Where the two disagree, [README.md](../README.md) and [PLAN.md](../PLAN.md) are
+> current and this file is not.
+
 Every claim below is marked VERIFIED (with the source read directly) or UNVERIFIED. Research date: 2026-10-21.
 
 ## 1. The finding that changes the plan

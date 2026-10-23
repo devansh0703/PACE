@@ -1,0 +1,49 @@
+---
+// The invariant, and the evidence that it is checked rather than asserted.
+import { decomposition } from '../../data/measurements';
+
+const states = decomposition.violating === 0 ? 'exact' : 'violated';
+---
+
+<figure class="chart">
+  <figcaption>
+    <span>The rule the analyzer enforces on every sample of every trace</span>
+    <span class="src">pace-sdk/results/accuracy.json · decomposition</span>
+  </figcaption>
+  <div class="plot">
+    <svg viewBox="0 0 900 150" role="img" aria-label={`The decomposition invariant wall equals on-CPU plus preempted plus blocked, held exactly on ${decomposition.samples} samples with ${decomposition.violating} violations`}>
+      <g font-size="17" fill="var(--ink)">
+        <text x="20" y="46">wall_ns</text>
+        <text x="122" y="46" fill="var(--ink-faint)">=</text>
+        <text x="150" y="46" fill="var(--accent)">on_cpu_ns</text>
+        <text x="290" y="46" fill="var(--ink-faint)">+</text>
+        <text x="318" y="46" fill="var(--sev-critical)">preempted_ns</text>
+        <text x="482" y="46" fill="var(--ink-faint)">+</text>
+        <text x="510" y="46" fill="var(--sev-info)">blocked_ns</text>
+      </g>
+
+      <g>
+        <rect x="20" y="72" width="860" height="26" fill="var(--bar-track)" stroke="var(--line-strong)" stroke-width="0.5" />
+        <rect x="20" y="72" width="860" height="26" fill="var(--sev-ok)" opacity="0.22" />
+        <text x="450" y="89" font-size="11" text-anchor="middle">{(decomposition.samples).toLocaleString('en-US')} samples checked</text>
+      </g>
+
+      <g font-size="12">
+        <text x="20" y="126" fill="var(--ink-dim)">
+          violations {decomposition.violating} · the decomposition is {states}
+        </text>
+        <text x="880" y="126" text-anchor="end" fill="var(--ink-dim)">
+          a trace that fails this is refused, not reported on
+        </text>
+      </g>
+    </svg>
+  </div>
+  <div class="chart-note">
+    <p>
+      The three buckets are not a model fitted to the data. They are three
+      measurements of the same window, and they have to add up to it. The analyzer checks the sum
+      on every sample as it reads, and <span class="mono">pace verify</span> exits non-zero when a
+      trace breaks it — including on an empty trace, because a vacuous pass is a false green.
+    </p>
+  </div>
+</figure>

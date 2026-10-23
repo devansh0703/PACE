@@ -1,0 +1,113 @@
+---
+// The honest positioning, as a matrix. This is the figure that keeps the
+// product's claim narrow: it names the incumbents and shows where each one
+// does and does not overlap.
+type Row = { vendor: string; note: string; cells: (boolean | string)[] };
+
+const columns = ['embeddable in a third-party engine', 'no perf access needed', 'vendor-neutral', 'your model, in-process', 'no trace buffer or IPC'];
+
+const rows: Row[] = [
+  {
+    vendor: 'Intel VTune',
+    note: 'separates preemption wait from inactive sync wait; Intel-branded, not linkable',
+    cells: [false, false, true, false, false],
+  },
+  {
+    vendor: 'Perfetto',
+    note: 'a genuinely embeddable SDK, but it produces a trace you then have to read',
+    cells: [true, true, true, false, false],
+  },
+  {
+    vendor: 'Arm Streamline',
+    note: 'system-wide, embedded and RTOS capable; a tool, not a component',
+    cells: [false, false, true, false, false],
+  },
+  {
+    vendor: 'PACE',
+    note: 'a counter you link in and read directly, with no elevated privilege on tier 0',
+    cells: [true, true, true, true, true],
+  },
+];
+
+const width = 900;
+const labelWidth = 150;
+const rowHeight = 54;
+const colWidth = (width - labelWidth - 20) / columns.length;
+const top = 96;
+const height = top + rows.length * rowHeight + 10;
+---
+
+<figure class="chart">
+  <figcaption>
+    <span>What each tool is, and where they actually overlap</span>
+    <span class="src">docs/COMPETITIVE-AND-PRIOR-ART.md · docs/CEO-REVIEW.md</span>
+  </figcaption>
+  <div class="plot">
+    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="A capability matrix comparing Intel VTune, Perfetto and Arm Streamline with PACE on five properties">
+      <g font-size="10.5" fill="var(--ink-faint)">
+        {
+          columns.map((c, i) => (
+            <text
+              x={labelWidth + i * colWidth + colWidth / 2}
+              y={14 + (i % 2) * 30}
+              text-anchor="middle"
+            >
+              {c.length > 34 ? `${c.slice(0, 32)}…` : c}
+            </text>
+          ))
+        }
+      </g>
+
+      <g>
+        <line class="axis" x1={labelWidth} y1={top - 8} x2={width - 10} y2={top - 8} />
+        {
+          rows.map((row, r) => {
+            const y = top + r * rowHeight;
+            const isPace = row.vendor === 'PACE';
+            return (
+              <g>
+                {isPace && (
+                  <rect x="0" y={y - 4} width={width - 10} height={rowHeight - 6} fill="var(--accent)" opacity="0.08" />
+                )}
+                <text class="label" x="0" y={y + 14} font-size="13" fill={isPace ? 'var(--accent)' : 'var(--ink)'}>
+                  {row.vendor}
+                </text>
+                <text x="0" y={y + 32} font-size="10" fill="var(--ink-faint)">
+                  {row.note.length > 40 ? `${row.note.slice(0, 40)}…` : row.note}
+                </text>
+                {
+                  row.cells.map((cell, c) => {
+                    const cx = labelWidth + c * colWidth + colWidth / 2;
+                    return (
+                      <g>
+                        {cell === true ? (
+                          <text x={cx} y={y + 20} font-size="15" text-anchor="middle" fill="var(--sev-ok)">
+                            yes
+                          </text>
+                        ) : (
+                          <text x={cx} y={y + 20} font-size="13" text-anchor="middle" fill="var(--ink-faint)">
+                            no
+                          </text>
+                        )}
+                      </g>
+                    );
+                  })
+                }
+                <line class="grid" x1="0" y1={y + rowHeight - 10} x2={width - 10} y2={y + rowHeight - 10} />
+              </g>
+            );
+          })
+        }
+      </g>
+    </svg>
+  </div>
+  <div class="chart-note">
+    <p>
+      Two of the five columns are ambiguous on purpose. VTune does separate preemption from
+      blocking, and Perfetto really is an embeddable SDK, so the claim here is not that nobody
+      can do this. It is narrower: a counter you link into your own product, that needs no
+      elevated privilege and reports into your model rather than into a trace you then have to
+      parse.
+    </p>
+  </div>
+</figure>

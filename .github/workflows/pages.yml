@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'websites/**'
+      - 'pace-sdk/results/**'
+      - 'pace-analyzer/results/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -23,7 +25,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build the sites
+    name: Build the site
     runs-on: ubuntu-24.04
 
     steps:
@@ -33,79 +35,79 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: websites/*/package-lock.json
+          cache-dependency-path: websites/pace/package-lock.json
 
-      - name: Build the pace-sdk site
-        working-directory: websites/pace-sdk
+      # The site renders every figure from the two committed measurement
+      # artifacts, so a build without them fails on purpose rather than
+      # shipping a page with a blank where a measurement belongs.
+      - name: Check that the measurement artifacts are present
+        run: |
+          for artifact in pace-sdk/results/accuracy.json \
+                          pace-analyzer/results/real-trace-report.txt; do
+            if [ ! -f "$artifact" ]; then
+              echo "::error::the site publishes numbers from $artifact, which is missing"
+              exit 1
+            fi
+          done
+          echo "both measurement artifacts are present"
+
+      - name: Build the site
+        working-directory: websites/pace
         run: |
           npm ci
           npm run build
 
-      - name: Build the pace-analyzer site
-        working-directory: websites/pace-analyzer
-        run: |
-          npm ci
-          npm run build
-
-      - name: Check that no site contains a placeholder
-        working-directory: websites
+      - name: Check that no built page contains a placeholder
+        working-directory: websites/pace
         run: |
           if grep -rniE 'lorem ipsum|TODO|FIXME|placeholder text|coming soon' \
-               */dist --include='*.html'; then
+               dist --include='*.html'; then
             echo "::error::a built page contains placeholder content"
             exit 1
           fi
-          echo "no placeholder content in the built sites"
+          echo "no placeholder content in the built site"
 
-      - name: Check the sites against the design contract
+      - name: Check that no built page carries an invented contact detail
+        working-directory: websites/pace
+        run: |
+          # A demo address on a product site is a message nobody receives.
+          if grep -rnE 'pace@devansh0703\.dev|example\.com|@example\.org' \
+               dist --include='*.html'; then
+            echo "::error::a built page carries a placeholder address"
+            exit 1
+          fi
+          grep -q 'devanshraulo@gmail.com' dist/about/index.html
+          echo "the real address is the only one on the site"
+
+      - name: Check the site against the design contract
         working-directory: websites
         run: python3 scripts/check_design_contract.py
 
-      - name: Check that the site's accuracy table matches the artifact
+      - name: Check that the built page matches the measurement artifact
         working-directory: websites
-        run: |
-          python3 scripts/check_site_accuracy.py
+        run: python3 scripts/check_site_accuracy.py
 
-      # Both sites land in one gh-pages branch.
-      #
-      # The artifact's root IS the site root: GitHub Pages serves a
-      # project site from /<repo>/, so the tree published here is served
-      # from /PACE/ without a PACE/ directory of its own. A directory of
-      # that name would be served from /PACE/PACE/.
-      #
-      # So the SDK's site is at the root of the artifact and the
-      # analyzer's site is under analyzer/, which is the base its astro
-      # config sets.
-      - name: Assemble the site
+      # GitHub Pages serves a project site from /<repo>/, so the built
+      # artifact IS the site root: the tree published here is served from
+      # /PACE/ without a PACE/ directory of its own. A directory of that
+      # name would be served from /PACE/PACE/.
+      - name: Check that every internal link carries the base path
+        working-directory: websites/pace
         run: |
-          rm -rf _site
-          mkdir -p _site/analyzer
-          cp -r websites/pace-sdk/dist/. _site/
-          cp -r websites/pace-analyzer/dist/. _site/analyzer/
-          echo "the published tree:"
-          find _site -maxdepth 2 -name "index.html" | sort
-
-      - name: Check that both pages use their own base path
-        run: |
-          # A page whose assets are referenced from the domain root would
-          # 404 on the deployed site, because the site is served from
-          # /PACE/.
-          if grep -qE '(src|href)="/_astro/' _site/index.html; then
-            echo "::error::the SDK's page references the domain root"
+          # An asset or link referenced from the domain root would 404 on the
+          # deployed site, because the site is served from /PACE/.
+          if grep -rhoE '(src|href)="/[^"]*"' dist --include='*.html' \
+               | grep -v '"/PACE/' ; then
+            echo "::error::a built page references the domain root"
             exit 1
           fi
-          if grep -qE '(src|href)="/_astro/' _site/analyzer/index.html; then
-            echo "::error::the analyzer's page references the domain root"
-            exit 1
-          fi
-          grep -q '/PACE/_astro/' _site/index.html
-          grep -q '/PACE/analyzer/_astro/' _site/analyzer/index.html
-          echo "both pages use their own base path"
+          grep -q '/PACE/_astro/' dist/index.html
+          echo "every internal link carries the base path"
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: websites/pace/dist
 
   deploy:
     name: Deploy to GitHub Pages

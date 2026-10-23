@@ -1,0 +1,64 @@
+---
+import Base from '../layouts/Base.astro';
+import { site, href } from '../data/site';
+import GapDiagram from '../components/charts/GapDiagram.astro';
+import DecompositionFigure from '../components/charts/DecompositionFigure.astro';
+
+const destinations = [
+  { href: href(), icon: 'ph-house', label: 'Home', what: 'the problem, the product, and the evidence' },
+  { href: href('product/'), icon: 'ph-cube', label: 'Product', what: 'what it is, the tiers and the scope' },
+  { href: href('service/'), icon: 'ph-activity', label: 'Service', what: 'the hosted analyzer, and its API' },
+  { href: href('install/'), icon: 'ph-download-simple', label: 'Install', what: 'packages, the toolchain, and troubleshooting' },
+  { href: href('docs/'), icon: 'ph-book', label: 'Docs', what: 'formats, the C API, the CLI, the error codes' },
+  { href: href('research/'), icon: 'ph-flask', label: 'Research', what: 'the method, the accuracy record and prior art' },
+];
+---
+
+<Base
+  title="Not found — PACE"
+  description="That page does not exist. Here is everything that does."
+>
+  <div class="wrap">
+    <section class="hero">
+      <div class="section-label">404</div>
+      <h1>That page does not exist</h1>
+      <p class="lede">
+        Either a link is stale or it was typed by hand. Nothing here is hidden behind a redirect, so
+        the list below is the whole site.
+      </p>
+    </section>
+
+    <section>
+      <div class="section-label">Everything that does exist</div>
+      <div class="card-row">
+        {
+          destinations.map((d) => (
+            <div class="panel">
+              <h3><i class={`ph ${d.icon}`}></i> {d.label}</h3>
+              <p>{d.what}</p>
+              <p><a href={d.href}>Go to {d.label.toLowerCase()}</a></p>
+            </div>
+          ))
+        }
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">Since you are here</div>
+      <h2>The thing this site is about, in two figures</h2>
+      <p>
+        A dead end is as good a place as any to state the point: a slow thread has two possible
+        causes, a CPU-time counter reports neither, and the difference between them decides whether
+        editing code is worth your afternoon.
+      </p>
+      <GapDiagram />
+      <DecompositionFigure />
+      <p>
+        If you came here looking for a page that used to exist, tell me which one:
+        {' '}<a href={site.issues}>the issue tracker</a> or
+        {' '}<a href={`mailto:${site.contact}`}>{site.contact}</a>. A dead link on a site this small
+        is a bug rather than a design decision.
+      </p>
+    </section>
+  </div>
+</Base>

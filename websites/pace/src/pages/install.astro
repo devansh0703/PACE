@@ -1,0 +1,173 @@
+---
+import Base from '../layouts/Base.astro';
+import { site, href } from '../data/site';
+import { decomposition, measurements, threads, run, pct, share } from '../data/measurements';
+import CostBars from '../components/charts/CostBars.astro';
+import DecompositionFigure from '../components/charts/DecompositionFigure.astro';
+import GapDiagram from '../components/charts/GapDiagram.astro';
+---
+
+<Base
+  title="Install — PACE"
+  description="Install the PACE library from vcpkg, Conan or a checkout, and the analyzer from source. Or skip both and use the hosted service."
+>
+  <div class="wrap">
+    <section class="hero">
+      <div class="section-label">Install</div>
+      <h1>Three ways in, and the shortest one needs no toolchain</h1>
+      <p class="lede">
+        The library is a C and C++ component with a CMake package, a vcpkg port and a Conan recipe.
+        The analyzer is a Rust binary with no runtime dependencies beyond the Rust standard library.
+        If you only want to see what PACE says about a trace you already have, the
+        {' '}<a href={href('service/')}>hosted analyzer</a> does it over HTTP.
+      </p>
+    </section>
+
+    <section>
+      <div class="section-label">The library</div>
+      <h2>Link it into your profiler</h2>
+      <div class="grid-3">
+        <div class="panel">
+          <h3><i class="ph ph-package"></i> vcpkg</h3>
+          <pre><code>{`git clone ${site.repo}
+vcpkg install pace \\
+  --overlay-ports=./PACE/ports`}</code></pre>
+          <p>The port installs from the published release, so the version you get is the version that was measured.</p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-cube"></i> Conan</h3>
+          <pre><code>{`conan install \\
+  --requires=pace/{site.version}`}</code></pre>
+          <p>
+            The recipe was verified end to end with <span class="mono">conan create</span>, and a
+            separate consumer project builds against the installed tree and runs.
+          </p>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-wrench"></i> From a checkout</h3>
+          <pre><code>{`git clone ${site.repo}
+cd PACE/pace-sdk
+cmake -S . -B build -G Ninja
+cmake --build build -j 8
+ctest --test-dir build`}</code></pre>
+        </div>
+      </div>
+
+      <h3 style="margin-top:32px">Then find it and link it</h3>
+      <pre><code>{`find_package(pace REQUIRED)
+target_link_libraries(your_target PRIVATE pace::pace)`}</code></pre>
+      <p>
+        One static or shared library with a stable C ABI. No runtime dependencies beyond the
+        platform's threading library, and no elevated privilege for tier 0.
+      </p>
+      <CostBars />
+    </section>
+
+    <section>
+      <div class="section-label">The analyzer</div>
+      <h2>Or read a trace</h2>
+      <div class="grid-2">
+        <div class="panel terminal-block">
+          <h3><i class="ph ph-terminal-window"></i> Build and run</h3>
+          <pre><code>{`git clone ${site.repo}
+cd PACE/pace-analyzer
+cargo build --release
+./target/release/pace --help`}</code></pre>
+        </div>
+        <div class="panel">
+          <h3><i class="ph ph-list-checks"></i> The four commands</h3>
+          <pre><code>{`pace analyze <trace>    # the attribution report
+pace inspect <trace>   # raw per-thread samples
+pace verify <trace>    # the decomposition invariant
+pace convert <in> --to pace|chrome`}</code></pre>
+          <p>
+            <span class="mono">verify</span> exits non-zero when a trace breaks
+            {' '}<span class="mono">wall == on_cpu + preempted + blocked</span>, so it works as a CI
+            gate. It also exits non-zero on an empty trace: the invariant holds vacuously there, and
+            a vacuous pass is a false green.
+          </p>
+        </div>
+      </div>
+
+      <h3 style="margin-top:32px">A report, offline, as one file</h3>
+      <pre><code>{`pace analyze trace.jsonl --output report.html`}</code></pre>
+      <p>
+        The HTML report opens offline with nothing to fetch: the per-thread split and the
+        distribution are drawn as inline SVG, so there is no charting library to load and no network
+        dependency in a report you are about to attach to a bug.
+      </p>
+    </section>
+
+    <section>
+      <div class="section-label">Verify the install</div>
+      <h2>What you should see</h2>
+      <p>
+        <span class="mono">pace analyze</span> on the recorded contended run prints a summary line, one
+        row per thread, and a ranked findings list. The run below is
+        {' '}{threads.length} threads that each lost roughly
+        {' '}{pct(share(run.totals.preemptedNs, run.totals.wallNs))} of their wall time to preemption,
+        which is what the two figures show.
+      </p>
+      <GapDiagram />
+      <DecompositionFigure />
+      <div class="callout">
+        <div class="callout-title">If the decomposition says unavailable</div>
+        <p>
+          That is a real answer, not a failure. It means either the platform cannot make the split
+          without privilege, or the kernel is not collecting scheduler statistics. Both cases are
+          detected rather than papered over, and the analyzer reports the split as unavailable instead
+          of printing a confident zero.
+        </p>
+      </div>
+      <p>
+        The recorded run in the figures above is
+        {' '}{decomposition.samples.toLocaleString('en-US')} samples; the analyzer's own committed
+        terminal report covers a larger one. Both are in the repository, and every figure on this
+        site is generated from them at build time rather than typed into the page.
+      </p>
+    </section>
+
+    <section>
+      <div class="section-label">Troubleshooting</div>
+      <h2>Three things that go wrong, and what they mean</h2>
+      <div class="flow">
+        <div class="flow-row">
+          <div class="flow-icon"><i class="ph ph-shield-slash" style="font-size:20px"></i></div>
+          <div>
+            <h3><span class="mono">perf_event_paranoid</span> is too high for tier 1</h3>
+            <p>
+              Then tier 1 is unavailable and tier 0 is unaffected. Tier 1 is an upgrade, never a
+              requirement — a product that requires root is unshippable inside somebody else's engine.
+            </p>
+          </div>
+        </div>
+        <div class="flow-row">
+          <div class="flow-icon"><i class="ph ph-gauge" style="font-size:20px"></i></div>
+          <div>
+            <h3>The preempted bucket reads zero on every thread</h3>
+            <p>
+              Check whether the kernel is collecting scheduler statistics. PACE detects this and
+              reports the split as unavailable, but a system where <span class="mono">schedstat</span>
+              is switched off is a system where the three-way split cannot be measured at all.
+            </p>
+          </div>
+        </div>
+        <div class="flow-row">
+          <div class="flow-icon"><i class="ph ph-warning" style="font-size:20px"></i></div>
+          <div>
+            <h3>The eBPF tier will not attach</h3>
+            <p>
+              It needs <span class="mono">CAP_BPF</span>-class privilege and BTF. It is an addition:
+              when it cannot attach, the measurement is unchanged and the session reports that it did
+              not attach rather than failing.
+            </p>
+          </div>
+        </div>
+      </div>
+      <p>
+        Anything else: <a href={site.issues}>open an issue</a>, or email
+        {' '}<a href={`mailto:${site.contact}`}>{site.contact}</a>.
+      </p>
+    </section>
+  </div>
+</Base>

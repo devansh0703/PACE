@@ -194,6 +194,65 @@ jobs:
         working-directory: pace-analyzer
         run: cargo test --release
 
+  # ---------------------------------------------------------------- service
+  service:
+    name: Service
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The service embeds the analyzer crate by path, so it needs the
+      # analyzer's source as well as its own.
+      - name: Check the formatting
+        working-directory: service
+        run: cargo fmt --check
+
+      - name: Lint
+        working-directory: service
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Build
+        working-directory: service
+        run: cargo build --release
+
+      - name: Test
+        working-directory: service
+        run: cargo test --release
+
+      # The container is what gets deployed, so it is built here rather than
+      # assumed to work. It needs the Dockerfile at the repository root and
+      # the root .dockerignore to keep the context to the two crates.
+      - name: Build the container
+        run: docker build -t pace-service:ci .
+
+      # And the built container is exercised, not just built: health, and the
+      # committed trace through the real HTTP path.
+      - name: Run the container and call it
+        run: |
+          docker run -d --rm --name pace-service-ci -p 18080:8080 \
+            -e PORT=8080 pace-service:ci
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/health >/tmp/health.json; then break; fi
+            sleep 1
+          done
+          cat /tmp/health.json
+          echo
+          curl -fsS -o /tmp/verify.json -w 'verify status: %{http_code}\n' \
+            --data-binary @service/tests/sample-trace.jsonl \
+            "http://127.0.0.1:18080/analyze?verify=1"
+          cat /tmp/verify.json
+          echo
+          python3 - <<'PY'
+          import json, sys
+          verify = json.load(open("/tmp/verify.json"))
+          if verify.get("decomposition") != "exact" or verify.get("violations"):
+              print("the deployed container does not report an exact decomposition")
+              sys.exit(1)
+          print("the container answers and the decomposition is exact")
+          PY
+          docker stop pace-service-ci
+
   # ------------------------------------------------------- the verification
   accuracy:
     name: Accuracy harness
@@ -372,7 +431,7 @@ jobs:
 
   # ---------------------------------------------------------------- websites
   websites:
-    name: Websites
+    name: Website
     runs-on: ubuntu-24.04
 
     steps:
@@ -382,42 +441,58 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: websites/*/package-lock.json
+          cache-dependency-path: websites/pace/package-lock.json
 
-      - name: Build the pace-sdk site
-        working-directory: websites/pace-sdk
+      # One product, one site. It renders every figure from the committed
+      # measurement artifacts, so a build without them fails on purpose.
+      - name: Check that the measurement artifacts are present
+        run: |
+          for artifact in pace-sdk/results/accuracy.json \
+                          pace-analyzer/results/real-trace-report.txt; do
+            if [ ! -f "$artifact" ]; then
+              echo "::error::the site publishes numbers from $artifact, which is missing"
+              exit 1
+            fi
+          done
+
+      - name: Build the site
+        working-directory: websites/pace
         run: |
           npm ci
           npm run build
 
-      - name: Build the pace-analyzer site
-        working-directory: websites/pace-analyzer
-        run: |
-          npm ci
-          npm run build
-
-      - name: Check that no site contains a placeholder
-        working-directory: websites
+      - name: Check that no built page contains a placeholder
+        working-directory: websites/pace
         run: |
           # A site with a TODO, a lorem ipsum or an unfilled template is a
           # half-finished product and must not ship.
           if grep -rniE 'lorem ipsum|TODO|FIXME|placeholder text|coming soon' \
-               */dist --include='*.html'; then
+               dist --include='*.html'; then
             echo "::error::a built page contains placeholder content"
             exit 1
           fi
-          echo "no placeholder content in the built sites"
+          echo "no placeholder content in the built site"
 
-      - name: Check the sites against the design contract
+      - name: Check that no built page carries an invented contact detail
+        working-directory: websites/pace
+        run: |
+          if grep -rnE 'pace@devansh0703\.dev|example\.com|@example\.org' \
+               dist --include='*.html'; then
+            echo "::error::a built page carries a placeholder address"
+            exit 1
+          fi
+          grep -q 'devanshraulo@gmail.com' dist/about/index.html
+
+      - name: Check the site against the design contract
         working-directory: websites
         run: python3 scripts/check_design_contract.py
 
-      - name: Check that the site's accuracy table matches the artifact
+      - name: Check that the built page matches the measurement artifact
         working-directory: websites
         run: |
           # The numbers on the site must come from the measurement harness.
-          # A hand-typed copy is a number that drifts, and a drifted number
-          # on a product site is a lie nobody notices.
+          # The page renders them at build time and this checks the build
+          # actually produced them, so a broken data module cannot pass.
           python3 scripts/check_site_accuracy.py
 
   vcpkg:
