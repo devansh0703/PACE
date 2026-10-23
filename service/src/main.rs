@@ -76,10 +76,20 @@ fn handle(mut request: Request) {
         None => (url, String::new()),
     };
 
+    // HEAD is routed like GET, with no body.
+    //
+    // A liveness probe that answers HEAD with 404 is telling a monitor the
+    // service is down when it is up, and this project's whole claim is that it
+    // does not report a state it did not measure. tiny_http still writes the
+    // body for HEAD unless the caller omits it, so the response is rebuilt
+    // empty here rather than sent as-is.
+    let is_head = method == "HEAD";
+    let routed = if is_head { "GET" } else { method.as_str() };
+
     // The site fetches /health from another origin, and a person may paste a
     // trace from a form on a page hosted elsewhere. There are no credentials
     // and no cookies anywhere in this service, so the wildcard costs nothing.
-    let response = match (method.as_str(), path.as_str()) {
+    let response = match (routed, path.as_str()) {
         ("OPTIONS", _) => Response::from_data(Vec::new())
             .with_status_code(204)
             .with_header(cors())
@@ -99,7 +109,16 @@ fn handle(mut request: Request) {
         ),
     };
 
-    let _ = request.respond(response.with_header(cors()));
+    let response = response.with_header(cors());
+    let response = if is_head {
+        Response::from_data(Vec::new())
+            .with_status_code(response.status_code().0)
+            .with_header(cors())
+    } else {
+        response
+    };
+
+    let _ = request.respond(response);
 }
 
 // ------------------------------------------------------------------ responses
